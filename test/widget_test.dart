@@ -1,30 +1,22 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
-
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-
-import 'package:osan_app/main.dart';
+import 'package:osan_app/models/entrega.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
+  test('Calcula correctamente el total de una entrega diaria y rango semanal', () {
+    final entrega = Entrega(
+      clienteId: 1,
+      cantidadBotellas: 12,
+      precioUnitario: 2.5,
+      fecha: '2026-11-03',
+    );
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+    expect(entrega.total, 30.0);
 
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
+    final fecha = FechaSemanaUtils.desdeIso('2026-11-03');
+    final lunes = FechaSemanaUtils.obtenerLunes(fecha);
+    final domingo = FechaSemanaUtils.obtenerDomingo(fecha);
 
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+    expect(FechaSemanaUtils.aIso(lunes), '2026-11-02');
+    expect(FechaSemanaUtils.aIso(domingo), '2026-11-08');
   });
 }

@@ -1,11 +1,11 @@
 {
-    "name": "osan_app",
-    "short_name": "osan_app",
+    "name": "OSAN Juice",
+    "short_name": "OSAN Juice",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#F55001",
+    "theme_color": "#F55001",
+    "description": "Control de inventario y reparto semanal de jugos OSAN.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

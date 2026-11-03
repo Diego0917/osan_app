@@ -11,7 +11,7 @@ class Producto {
 
   Map<String, dynamic> toMap() {
     return {
-      'id': id,
+      if (id != null) 'id': id,
       'nombre': nombre,
       'cantidad': cantidad,
     };
@@ -19,9 +19,9 @@ class Producto {
 
   factory Producto.fromMap(Map<String, dynamic> map) {
     return Producto(
-      id: map['id'],
-      nombre: map['nombre'],
-      cantidad: map['cantidad'],
+      id: map['id'] as int?,
+      nombre: (map['nombre'] ?? '') as String,
+      cantidad: (map['cantidad'] ?? 0) as int,
     );
   }
 }
