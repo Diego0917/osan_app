@@ -5,6 +5,7 @@ import '../../models/entrega.dart';
 import '../../widgets/cliente_card.dart';
 import 'cliente_entregas_screen.dart';
 import 'cliente_form_screen.dart';
+import 'reporte_mensual_screen.dart';
 
 class _DatosClientesSemana {
   final List<Cliente> clientes;
@@ -42,12 +43,16 @@ class _ClientesListScreenState extends State<ClientesListScreen> {
     final ahora = DateTime.now();
     final lunes = FechaSemanaUtils.obtenerLunes(ahora);
     final domingo = FechaSemanaUtils.obtenerDomingo(ahora);
+    final inicioMes = FechaSemanaUtils.obtenerInicioMes(ahora);
+    final finMes = FechaSemanaUtils.obtenerFinMes(ahora);
 
     final clientes = await DatabaseHelper.instance.getClientes();
     final resumenes = await DatabaseHelper.instance.getResumenesSemanales(
       fechaInicio: FechaSemanaUtils.aIso(lunes),
       fechaFin: FechaSemanaUtils.aIso(domingo),
       fechaHoy: FechaSemanaUtils.aIso(ahora),
+      fechaInicioMes: FechaSemanaUtils.aIso(inicioMes),
+      fechaFinMes: FechaSemanaUtils.aIso(finMes),
     );
 
     return _DatosClientesSemana(clientes: clientes, resumenes: resumenes);
@@ -98,6 +103,17 @@ class _ClientesListScreenState extends State<ClientesListScreen> {
     _refreshClientes();
   }
 
+  Future<void> _abrirReporteMensual() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const ReporteMensualScreen(),
+      ),
+    );
+    if (!mounted) return;
+    _refreshClientes();
+  }
+
   Future<void> _registrarEntrega(Cliente cliente) async {
     final guardado = await mostrarModalEntrega(context, cliente: cliente);
     if (!mounted) return;
@@ -125,9 +141,16 @@ class _ClientesListScreenState extends State<ClientesListScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Clientes y Reparto Semanal'),
+        title: const Text('Clientes y Reparto'),
         backgroundColor: Colors.orange,
         foregroundColor: Colors.white,
+        actions: [
+          IconButton(
+            tooltip: 'Ver Reporte Mensual',
+            onPressed: _abrirReporteMensual,
+            icon: const Icon(Icons.assessment),
+          ),
+        ],
       ),
       body: FutureBuilder<_DatosClientesSemana>(
         future: _datosFuture,
@@ -137,18 +160,33 @@ class _ClientesListScreenState extends State<ClientesListScreen> {
           }
           if (!snapshot.hasData || snapshot.data!.clientes.isEmpty) {
             return const Center(
-              child: Text('No hay clientes registrados. Agrega el primero.'),
+              child: Padding(
+                padding: EdgeInsets.all(16),
+                child: Text(
+                  'No hay clientes registrados. Agrega el primero.',
+                  textAlign: TextAlign.center,
+                ),
+              ),
             );
           }
 
           final clientes = snapshot.data!.clientes;
           final resumenes = snapshot.data!.resumenes;
 
+          int botellasGlobalHoy = 0;
+          double totalGlobalHoy = 0.0;
           int botellasGlobalSemana = 0;
           double totalGlobalSemana = 0.0;
+          int botellasGlobalMes = 0;
+          double totalGlobalMes = 0.0;
+
           for (final r in resumenes.values) {
+            botellasGlobalHoy += r.botellasHoy;
+            totalGlobalHoy += r.totalHoy;
             botellasGlobalSemana += r.botellasSemana;
             totalGlobalSemana += r.totalSemana;
+            botellasGlobalMes += r.botellasMes;
+            totalGlobalMes += r.totalMes;
           }
 
           return Column(
@@ -161,47 +199,85 @@ class _ClientesListScreenState extends State<ClientesListScreen> {
                   color: Colors.orange.shade600,
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                    Row(
                       children: [
-                        const Text(
-                          'Resumen General (Semana Actual)',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 14,
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Resumen General de Ingresos',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 15,
+                                ),
+                              ),
+                              Text(
+                                'Semana: ${FechaSemanaUtils.formatearCorto(lunes)} - ${FechaSemanaUtils.formatearCorto(domingo)}',
+                                style: const TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 11,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                        const SizedBox(height: 2),
-                        Text(
-                          '${FechaSemanaUtils.formatearCorto(lunes)} - ${FechaSemanaUtils.formatearCorto(domingo)}',
-                          style: const TextStyle(
-                            color: Colors.white70,
-                            fontSize: 12,
+                        const SizedBox(width: 8),
+                        ElevatedButton.icon(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.white,
+                            foregroundColor: Colors.deepOrange,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 8,
+                            ),
+                            visualDensity: VisualDensity.compact,
+                          ),
+                          onPressed: _abrirReporteMensual,
+                          icon: const Icon(Icons.calendar_month, size: 16),
+                          label: const Text(
+                            'Reporte Mes',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                         ),
                       ],
                     ),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
+                    const SizedBox(height: 10),
+                    Row(
                       children: [
-                        Text(
-                          '$botellasGlobalSemana jugos',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 15,
+                        Expanded(
+                          child: _CajaResumenGlobal(
+                            titulo: 'Total del Día',
+                            jugos:
+                                '${FormatoUtils.entero(botellasGlobalHoy)} jugos',
+                            monto: FormatoUtils.moneda(totalGlobalHoy),
                           ),
                         ),
-                        Text(
-                          '\$${totalGlobalSemana.toStringAsFixed(2)}',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 17,
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: _CajaResumenGlobal(
+                            titulo: 'Semana Actual',
+                            jugos:
+                                '${FormatoUtils.entero(botellasGlobalSemana)} jugos',
+                            monto: FormatoUtils.moneda(totalGlobalSemana),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: _CajaResumenGlobal(
+                            titulo: FechaSemanaUtils.meses[ahora.month - 1],
+                            jugos:
+                                '${FormatoUtils.entero(botellasGlobalMes)} jugos',
+                            monto: FormatoUtils.moneda(totalGlobalMes),
                           ),
                         ),
                       ],
@@ -238,6 +314,75 @@ class _ClientesListScreenState extends State<ClientesListScreen> {
         backgroundColor: Colors.orange,
         onPressed: () => _abrirFormulario(),
         child: const Icon(Icons.person_add, color: Colors.white),
+      ),
+    );
+  }
+}
+
+class _CajaResumenGlobal extends StatelessWidget {
+  final String titulo;
+  final String jugos;
+  final String monto;
+
+  const _CajaResumenGlobal({
+    required this.titulo,
+    required this.jugos,
+    required this.monto,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.16),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              titulo,
+              maxLines: 1,
+              style: const TextStyle(
+                color: Colors.white70,
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          const SizedBox(height: 2),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              jugos,
+              maxLines: 1,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+          const SizedBox(height: 2),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              monto,
+              maxLines: 1,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -30,7 +30,7 @@ Future<bool> mostrarModalEntrega(
   DateTime fechaSeleccionada = esEdicion
       ? FechaSemanaUtils.desdeIso(entregaExistente.fecha)
       : DateTime.now();
-  bool descontarInventario = true;
+  bool descontarInventario = false;
   String? errorValidacion;
 
   double calcularSubtotal() {
@@ -66,6 +66,8 @@ Future<bool> mostrarModalEntrega(
                   esEdicion
                       ? 'Editar entrega - ${cliente.nombre}'
                       : 'Dejar jugos a ${cliente.nombre}',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
@@ -87,8 +89,13 @@ Future<bool> mostrarModalEntrega(
                     }
                   },
                   icon: const Icon(Icons.calendar_today, size: 18),
-                  label: Text(
-                    'Fecha: ${FechaSemanaUtils.formatearConDia(FechaSemanaUtils.aIso(fechaSeleccionada))}',
+                  label: Flexible(
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        'Fecha: ${FechaSemanaUtils.formatearConDia(FechaSemanaUtils.aIso(fechaSeleccionada))}',
+                      ),
+                    ),
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -124,7 +131,7 @@ Future<bool> mostrarModalEntrega(
                   SwitchListTile(
                     contentPadding: EdgeInsets.zero,
                     title: const Text(
-                      'Descontar del inventario de "Botellas"',
+                      'Descontar del contador de "Jugos del día"',
                       style: TextStyle(fontSize: 14),
                     ),
                     value: descontarInventario,
@@ -144,18 +151,25 @@ Future<bool> mostrarModalEntrega(
                     border: Border.all(color: Colors.green.shade200),
                   ),
                   child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       const Text(
-                        'Total del día:',
+                        'Valor total del día:',
                         style: TextStyle(fontWeight: FontWeight.w600),
                       ),
-                      Text(
-                        '\$${subtotal.toStringAsFixed(2)}',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.green.shade800,
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerRight,
+                          child: Text(
+                            FormatoUtils.moneda(subtotal),
+                            maxLines: 1,
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.green.shade800,
+                            ),
+                          ),
                         ),
                       ),
                     ],
@@ -302,7 +316,7 @@ class _ClienteEntregasScreenState extends State<ClienteEntregasScreen> {
       builder: (ctx) => AlertDialog(
         title: const Text('Eliminar registro'),
         content: Text(
-          '¿Eliminar la entrega de ${entrega.cantidadBotellas} botellas del ${FechaSemanaUtils.formatearConDia(entrega.fecha)}?',
+          '¿Eliminar la entrega de ${FormatoUtils.entero(entrega.cantidadBotellas)} botellas del ${FechaSemanaUtils.formatearConDia(entrega.fecha)}?',
         ),
         actions: [
           TextButton(
@@ -334,7 +348,11 @@ class _ClienteEntregasScreenState extends State<ClienteEntregasScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.cliente.nombre),
+        title: Text(
+          widget.cliente.nombre,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
         backgroundColor: Colors.orange,
         foregroundColor: Colors.white,
       ),
@@ -348,6 +366,7 @@ class _ClienteEntregasScreenState extends State<ClienteEntregasScreen> {
           final entregas = snapshot.data ?? [];
           int totalBotellasSemana = 0;
           int botellasHoy = 0;
+          double totalDineroHoy = 0.0;
           double totalDineroSemana = 0.0;
 
           for (final e in entregas) {
@@ -355,6 +374,7 @@ class _ClienteEntregasScreenState extends State<ClienteEntregasScreen> {
             totalDineroSemana += e.total;
             if (e.fecha == hoyIso) {
               botellasHoy += e.cantidadBotellas;
+              totalDineroHoy += e.total;
             }
           }
 
@@ -365,47 +385,53 @@ class _ClienteEntregasScreenState extends State<ClienteEntregasScreen> {
                 color: Colors.orange.shade50,
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
                 child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     IconButton(
                       tooltip: 'Semana anterior',
                       onPressed: () => _cambiarSemana(-1),
                       icon: const Icon(Icons.chevron_left),
                     ),
-                    Column(
-                      children: [
-                        Text(
-                          _esSemanaActual
-                              ? 'Semana Actual'
-                              : 'Semana Seleccionada',
-                          style: const TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.deepOrange,
-                          ),
-                        ),
-                        Text(
-                          '${FechaSemanaUtils.formatearCorto(_lunesSeleccionado)} - ${FechaSemanaUtils.formatearCorto(_domingoSeleccionado)}',
-                          style: const TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        if (!_esSemanaActual)
-                          TextButton(
-                            style: TextButton.styleFrom(
-                              padding: EdgeInsets.zero,
-                              minimumSize: const Size(60, 24),
-                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    Expanded(
+                      child: Column(
+                        children: [
+                          Text(
+                            _esSemanaActual
+                                ? 'Semana Actual'
+                                : 'Semana Seleccionada',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.deepOrange,
                             ),
-                            onPressed: () {
-                              _lunesSeleccionado =
-                                  FechaSemanaUtils.obtenerLunes(DateTime.now());
-                              _cargarEntregas();
-                            },
-                            child: const Text('Volver a esta semana'),
                           ),
-                      ],
+                          FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(
+                              '${FechaSemanaUtils.formatearCorto(_lunesSeleccionado)} - ${FechaSemanaUtils.formatearCorto(_domingoSeleccionado)}',
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                          if (!_esSemanaActual)
+                            TextButton(
+                              style: TextButton.styleFrom(
+                                padding: EdgeInsets.zero,
+                                minimumSize: const Size(60, 24),
+                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              ),
+                              onPressed: () {
+                                _lunesSeleccionado =
+                                    FechaSemanaUtils.obtenerLunes(
+                                      DateTime.now(),
+                                    );
+                                _cargarEntregas();
+                              },
+                              child: const Text('Volver a esta semana'),
+                            ),
+                        ],
+                      ),
                     ),
                     IconButton(
                       tooltip: 'Semana siguiente',
@@ -416,77 +442,47 @@ class _ClienteEntregasScreenState extends State<ClienteEntregasScreen> {
                 ),
               ),
 
-              // Resumen acumulado de la semana
+              // Resumen acumulado de hoy y de la semana
               Card(
                 margin: const EdgeInsets.all(12),
                 elevation: 2,
                 child: Padding(
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 14,
+                  ),
                   child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceAround,
                     children: [
-                      if (_esSemanaActual)
-                        Column(
-                          children: [
-                            const Text(
-                              'Dejados hoy',
-                              style: TextStyle(fontSize: 12, color: Colors.grey),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              '$botellasHoy',
-                              style: const TextStyle(
-                                fontSize: 20,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            const Text(
-                              'botellas',
-                              style: TextStyle(fontSize: 11, color: Colors.grey),
-                            ),
-                          ],
+                      if (_esSemanaActual) ...[
+                        Expanded(
+                          child: _ColumnaResumenSemana(
+                            titulo: 'Total del Día',
+                            valorPrincipal: FormatoUtils.moneda(totalDineroHoy),
+                            subtitulo:
+                                '${FormatoUtils.entero(botellasHoy)} botellas hoy',
+                            colorValor: Colors.deepOrange,
+                          ),
                         ),
-                      Column(
-                        children: [
-                          const Text(
-                            'Total Semana',
-                            style: TextStyle(fontSize: 12, color: Colors.grey),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            '$totalBotellasSemana',
-                            style: const TextStyle(
-                              fontSize: 22,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.orange,
-                            ),
-                          ),
-                          const Text(
-                            'botellas',
-                            style: TextStyle(fontSize: 11, color: Colors.grey),
-                          ),
-                        ],
+                        const SizedBox(width: 8),
+                      ],
+                      Expanded(
+                        child: _ColumnaResumenSemana(
+                          titulo: 'Jugos Semana',
+                          valorPrincipal:
+                              FormatoUtils.entero(totalBotellasSemana),
+                          subtitulo: 'botellas',
+                          colorValor: Colors.orange,
+                        ),
                       ),
-                      Column(
-                        children: [
-                          const Text(
-                            'Total a Cobrar',
-                            style: TextStyle(fontSize: 12, color: Colors.grey),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            '\$${totalDineroSemana.toStringAsFixed(2)}',
-                            style: TextStyle(
-                              fontSize: 22,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.green.shade800,
-                            ),
-                          ),
-                          const Text(
-                            'en la semana',
-                            style: TextStyle(fontSize: 11, color: Colors.grey),
-                          ),
-                        ],
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: _ColumnaResumenSemana(
+                          titulo: 'Total Semana',
+                          valorPrincipal:
+                              FormatoUtils.moneda(totalDineroSemana),
+                          subtitulo: 'a cobrar',
+                          colorValor: Colors.green.shade800,
+                        ),
                       ),
                     ],
                   ),
@@ -497,8 +493,12 @@ class _ClienteEntregasScreenState extends State<ClienteEntregasScreen> {
               Expanded(
                 child: entregas.isEmpty
                     ? const Center(
-                        child: Text(
-                          'No hay jugos registrados en esta semana.',
+                        child: Padding(
+                          padding: EdgeInsets.all(16),
+                          child: Text(
+                            'No hay jugos registrados en esta semana.',
+                            textAlign: TextAlign.center,
+                          ),
                         ),
                       )
                     : ListView.builder(
@@ -511,77 +511,147 @@ class _ClienteEntregasScreenState extends State<ClienteEntregasScreen> {
                               horizontal: 12,
                               vertical: 5,
                             ),
-                            child: ListTile(
-                              leading: CircleAvatar(
-                                backgroundColor: Colors.orange.shade100,
-                                child: Text(
-                                  '${entrega.cantidadBotellas}',
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.deepOrange,
-                                  ),
-                                ),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 10,
                               ),
-                              title: Text(
-                                FechaSemanaUtils.formatearConDia(entrega.fecha),
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              subtitle: Text(
-                                '${entrega.cantidadBotellas} botellas × \$${entrega.precioUnitario.toStringAsFixed(2)} c/u',
-                              ),
-                              trailing: Row(
-                                mainAxisSize: MainAxisSize.min,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text(
-                                    '\$${entrega.total.toStringAsFixed(2)}',
-                                    style: TextStyle(
-                                      fontSize: 15,
-                                      fontWeight: FontWeight.bold,
-                                      color: Colors.green.shade800,
-                                    ),
-                                  ),
-                                  PopupMenuButton<String>(
-                                    onSelected: (valor) {
-                                      if (valor == 'editar') {
-                                        _abrirFormularioEntrega(
-                                          entregaExistente: entrega,
-                                        );
-                                      } else if (valor == 'eliminar') {
-                                        _confirmarEliminarEntrega(entrega);
-                                      }
-                                    },
-                                    itemBuilder: (ctx) => const [
-                                      PopupMenuItem(
-                                        value: 'editar',
-                                        child: Row(
-                                          children: [
-                                            Icon(
-                                              Icons.edit,
-                                              size: 18,
-                                              color: Colors.blue,
+                                  Row(
+                                    children: [
+                                      CircleAvatar(
+                                        radius: 20,
+                                        backgroundColor: Colors.orange.shade100,
+                                        child: Padding(
+                                          padding: const EdgeInsets.all(4),
+                                          child: FittedBox(
+                                            fit: BoxFit.scaleDown,
+                                            child: Text(
+                                              FormatoUtils.entero(
+                                                entrega.cantidadBotellas,
+                                              ),
+                                              style: const TextStyle(
+                                                fontWeight: FontWeight.bold,
+                                                color: Colors.deepOrange,
+                                              ),
                                             ),
-                                            SizedBox(width: 8),
-                                            Text('Editar'),
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              FechaSemanaUtils.formatearConDia(
+                                                entrega.fecha,
+                                              ),
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: const TextStyle(
+                                                fontSize: 15,
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            ),
+                                            const SizedBox(height: 2),
+                                            Text(
+                                              '${FormatoUtils.entero(entrega.cantidadBotellas)} botellas × ${FormatoUtils.moneda(entrega.precioUnitario)} c/u',
+                                              maxLines: 2,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: TextStyle(
+                                                fontSize: 13,
+                                                color: Colors.grey.shade700,
+                                              ),
+                                            ),
                                           ],
                                         ),
                                       ),
-                                      PopupMenuItem(
-                                        value: 'eliminar',
-                                        child: Row(
-                                          children: [
-                                            Icon(
-                                              Icons.delete,
-                                              size: 18,
-                                              color: Colors.red,
+                                      PopupMenuButton<String>(
+                                        padding: EdgeInsets.zero,
+                                        onSelected: (valor) {
+                                          if (valor == 'editar') {
+                                            _abrirFormularioEntrega(
+                                              entregaExistente: entrega,
+                                            );
+                                          } else if (valor == 'eliminar') {
+                                            _confirmarEliminarEntrega(entrega);
+                                          }
+                                        },
+                                        itemBuilder: (ctx) => const [
+                                          PopupMenuItem(
+                                            value: 'editar',
+                                            child: Row(
+                                              children: [
+                                                Icon(
+                                                  Icons.edit,
+                                                  size: 18,
+                                                  color: Colors.blue,
+                                                ),
+                                                SizedBox(width: 8),
+                                                Text('Editar'),
+                                              ],
                                             ),
-                                            SizedBox(width: 8),
-                                            Text('Eliminar'),
-                                          ],
-                                        ),
+                                          ),
+                                          PopupMenuItem(
+                                            value: 'eliminar',
+                                            child: Row(
+                                              children: [
+                                                Icon(
+                                                  Icons.delete,
+                                                  size: 18,
+                                                  color: Colors.red,
+                                                ),
+                                                SizedBox(width: 8),
+                                                Text('Eliminar'),
+                                              ],
+                                            ),
+                                          ),
+                                        ],
                                       ),
                                     ],
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Container(
+                                    width: double.infinity,
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 10,
+                                      vertical: 6,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: Colors.green.shade50,
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        Text(
+                                          'Valor total del día:',
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            color: Colors.grey.shade800,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Expanded(
+                                          child: FittedBox(
+                                            fit: BoxFit.scaleDown,
+                                            alignment: Alignment.centerRight,
+                                            child: Text(
+                                              FormatoUtils.moneda(entrega.total),
+                                              maxLines: 1,
+                                              style: TextStyle(
+                                                fontSize: 16,
+                                                fontWeight: FontWeight.bold,
+                                                color: Colors.green.shade800,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
                                   ),
                                 ],
                               ),
@@ -601,6 +671,57 @@ class _ClienteEntregasScreenState extends State<ClienteEntregasScreen> {
         icon: const Icon(Icons.add),
         label: const Text('Dejar jugos'),
       ),
+    );
+  }
+}
+
+class _ColumnaResumenSemana extends StatelessWidget {
+  final String titulo;
+  final String valorPrincipal;
+  final String subtitulo;
+  final Color colorValor;
+
+  const _ColumnaResumenSemana({
+    required this.titulo,
+    required this.valorPrincipal,
+    required this.subtitulo,
+    required this.colorValor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(
+            titulo,
+            maxLines: 1,
+            style: const TextStyle(fontSize: 12, color: Colors.grey),
+          ),
+        ),
+        const SizedBox(height: 4),
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(
+            valorPrincipal,
+            maxLines: 1,
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: colorValor,
+            ),
+          ),
+        ),
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(
+            subtitulo,
+            maxLines: 1,
+            style: const TextStyle(fontSize: 11, color: Colors.grey),
+          ),
+        ),
+      ],
     );
   }
 }

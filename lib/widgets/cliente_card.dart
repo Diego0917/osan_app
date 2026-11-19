@@ -47,6 +47,8 @@ class ClienteCard extends StatelessWidget {
                       children: [
                         Text(
                           cliente.nombre,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.bold,
@@ -55,6 +57,8 @@ class ClienteCard extends StatelessWidget {
                         const SizedBox(height: 2),
                         Text(
                           'Tel: ${cliente.telefono.isEmpty ? "Sin registrar" : cliente.telefono}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                           style: TextStyle(
                             fontSize: 13,
                             color: Colors.grey.shade700,
@@ -62,6 +66,8 @@ class ClienteCard extends StatelessWidget {
                         ),
                         Text(
                           'Ubicación: ${cliente.direccion.isEmpty ? "Sin registrar" : cliente.direccion}',
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
                           style: TextStyle(
                             fontSize: 13,
                             color: Colors.grey.shade700,
@@ -71,6 +77,7 @@ class ClienteCard extends StatelessWidget {
                     ),
                   ),
                   PopupMenuButton<String>(
+                    padding: EdgeInsets.zero,
                     onSelected: (valor) {
                       if (valor == 'detalle') {
                         onVerDetalle();
@@ -85,7 +92,11 @@ class ClienteCard extends StatelessWidget {
                         value: 'detalle',
                         child: Row(
                           children: [
-                            Icon(Icons.receipt_long, size: 20, color: Colors.orange),
+                            Icon(
+                              Icons.receipt_long,
+                              size: 20,
+                              color: Colors.orange,
+                            ),
                             SizedBox(width: 8),
                             Text('Ver semana'),
                           ],
@@ -123,44 +134,60 @@ class ClienteCard extends StatelessWidget {
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    _DatoResumen(
-                      etiqueta: 'Hoy',
-                      valor: '${resumen.botellasHoy} jugos',
+                    Expanded(
+                      child: _DatoResumen(
+                        etiqueta: 'Hoy',
+                        jugos: '${FormatoUtils.entero(resumen.botellasHoy)} jugos',
+                        dinero: FormatoUtils.moneda(resumen.totalHoy),
+                      ),
                     ),
-                    _DatoResumen(
-                      etiqueta: 'Semana',
-                      valor: '${resumen.botellasSemana} jugos',
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _DatoResumen(
+                        etiqueta: 'Semana',
+                        jugos:
+                            '${FormatoUtils.entero(resumen.botellasSemana)} jugos',
+                        dinero: FormatoUtils.moneda(resumen.totalSemana),
+                      ),
                     ),
-                    _DatoResumen(
-                      etiqueta: 'Total semana',
-                      valor: '\$${resumen.totalSemana.toStringAsFixed(2)}',
-                      destacar: true,
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _DatoResumen(
+                        etiqueta: 'Mes',
+                        jugos: '${FormatoUtils.entero(resumen.botellasMes)} jugos',
+                        dinero: FormatoUtils.moneda(resumen.totalMes),
+                        destacar: true,
+                        alinearDerecha: true,
+                      ),
                     ),
                   ],
                 ),
               ),
               const SizedBox(height: 8),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  TextButton.icon(
-                    onPressed: onVerDetalle,
-                    icon: const Icon(Icons.calendar_view_week, size: 18),
-                    label: const Text('Historial'),
-                  ),
-                  const SizedBox(width: 8),
-                  ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.orange,
-                      foregroundColor: Colors.white,
+              SizedBox(
+                width: double.infinity,
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 6,
+                  alignment: WrapAlignment.end,
+                  children: [
+                    TextButton.icon(
+                      onPressed: onVerDetalle,
+                      icon: const Icon(Icons.calendar_view_week, size: 18),
+                      label: const Text('Historial'),
                     ),
-                    onPressed: onRegistrarEntrega,
-                    icon: const Icon(Icons.local_drink, size: 18),
-                    label: const Text('Dejar jugos'),
-                  ),
-                ],
+                    ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.orange,
+                        foregroundColor: Colors.white,
+                      ),
+                      onPressed: onRegistrarEntrega,
+                      icon: const Icon(Icons.local_drink, size: 18),
+                      label: const Text('Dejar jugos'),
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
@@ -172,34 +199,66 @@ class ClienteCard extends StatelessWidget {
 
 class _DatoResumen extends StatelessWidget {
   final String etiqueta;
-  final String valor;
+  final String jugos;
+  final String dinero;
   final bool destacar;
+  final bool alinearDerecha;
 
   const _DatoResumen({
     required this.etiqueta,
-    required this.valor,
+    required this.jugos,
+    required this.dinero,
     this.destacar = false,
+    this.alinearDerecha = false,
   });
 
   @override
   Widget build(BuildContext context) {
+    final alineacion =
+        alinearDerecha ? Alignment.centerRight : Alignment.centerLeft;
+
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment:
+          alinearDerecha ? CrossAxisAlignment.end : CrossAxisAlignment.start,
       children: [
-        Text(
-          etiqueta,
-          style: TextStyle(fontSize: 11, color: Colors.grey.shade700),
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: alineacion,
+          child: Text(
+            etiqueta,
+            maxLines: 1,
+            style: TextStyle(fontSize: 11, color: Colors.grey.shade700),
+          ),
         ),
-        Text(
-          valor,
-          style: TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.bold,
-            color: destacar ? Colors.green.shade800 : Colors.black87,
+        const SizedBox(height: 2),
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: alineacion,
+          child: Text(
+            jugos,
+            maxLines: 1,
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: Colors.black87,
+            ),
+          ),
+        ),
+        const SizedBox(height: 1),
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: alineacion,
+          child: Text(
+            dinero,
+            maxLines: 1,
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+              color: destacar ? Colors.green.shade800 : Colors.deepOrange,
+            ),
           ),
         ),
       ],
     );
   }
 }
-
