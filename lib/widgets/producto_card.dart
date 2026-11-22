@@ -9,6 +9,8 @@ class ProductoCard extends StatelessWidget {
   final VoidCallback onEditar;
   final VoidCallback onEliminar;
   final VoidCallback? onPonerEnCero;
+  final bool esFijo;
+  final bool esSoloLectura;
 
   const ProductoCard({
     super.key,
@@ -18,6 +20,8 @@ class ProductoCard extends StatelessWidget {
     required this.onEditar,
     required this.onEliminar,
     this.onPonerEnCero,
+    this.esFijo = false,
+    this.esSoloLectura = false,
   });
 
   String? _notaCiclo(String nombre) {
@@ -29,7 +33,9 @@ class ProductoCard extends StatelessWidget {
     } else if (lower == 'devoluciones') {
       return 'Recogidas en la mañana (suma a Botellas • poner en 0 en la tarde)';
     } else if (lower == 'botellas vendidas') {
-      return 'Botellas que no regresaron (Jugos salidos - Devoluciones)';
+      return 'Botellas en calle que no regresaron (sin reinicio)';
+    } else if (lower == 'jugos salidos') {
+      return 'Acumulado histórico permanente (nunca se reinicia)';
     }
     return null;
   }
@@ -40,6 +46,7 @@ class ProductoCard extends StatelessWidget {
     if (lower == 'jugos') return Icons.local_drink;
     if (lower == 'devoluciones') return Icons.autorenew;
     if (lower == 'botellas vendidas') return Icons.sell;
+    if (lower == 'jugos salidos') return Icons.trending_up;
     return Icons.inventory_2;
   }
 
@@ -53,7 +60,7 @@ class ProductoCard extends StatelessWidget {
       elevation: 2,
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
-        onTap: onEditar,
+        onTap: esSoloLectura ? null : onEditar,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           child: Column(
@@ -75,14 +82,33 @@ class ProductoCard extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          producto.nombre,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                          ),
+                        Row(
+                          children: [
+                            Flexible(
+                              child: Text(
+                                producto.nombre,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                            if (esFijo) ...[
+                              const SizedBox(width: 6),
+                              Tooltip(
+                                message: esSoloLectura
+                                    ? 'Contador fijo permanente (no se reinicia)'
+                                    : 'Producto fijo (nombre protegido)',
+                                child: Icon(
+                                  Icons.lock_outline,
+                                  size: 16,
+                                  color: Colors.orange.shade700,
+                                ),
+                              ),
+                            ],
+                          ],
                         ),
                         if (nota != null) ...[
                           const SizedBox(height: 2),
@@ -99,55 +125,57 @@ class ProductoCard extends StatelessWidget {
                       ],
                     ),
                   ),
-                  PopupMenuButton<String>(
-                    padding: EdgeInsets.zero,
-                    onSelected: (valor) {
-                      if (valor == 'editar') {
-                        onEditar();
-                      } else if (valor == 'cero' && onPonerEnCero != null) {
-                        onPonerEnCero!();
-                      } else if (valor == 'eliminar') {
-                        onEliminar();
-                      }
-                    },
-                    itemBuilder: (context) => [
-                      const PopupMenuItem(
-                        value: 'editar',
-                        child: Row(
-                          children: [
-                            Icon(Icons.edit, size: 20, color: Colors.blue),
-                            SizedBox(width: 8),
-                            Text('Editar'),
-                          ],
-                        ),
-                      ),
-                      if (onPonerEnCero != null && producto.cantidad > 0)
+                  if (!esSoloLectura)
+                    PopupMenuButton<String>(
+                      padding: EdgeInsets.zero,
+                      onSelected: (valor) {
+                        if (valor == 'editar') {
+                          onEditar();
+                        } else if (valor == 'cero' && onPonerEnCero != null) {
+                          onPonerEnCero!();
+                        } else if (valor == 'eliminar' && !esFijo) {
+                          onEliminar();
+                        }
+                      },
+                      itemBuilder: (context) => [
                         const PopupMenuItem(
-                          value: 'cero',
+                          value: 'editar',
                           child: Row(
                             children: [
-                              Icon(
-                                Icons.restart_alt,
-                                size: 20,
-                                color: Colors.deepOrange,
-                              ),
+                              Icon(Icons.edit, size: 20, color: Colors.blue),
                               SizedBox(width: 8),
-                              Text('Poner en 0 (Tarde)'),
+                              Text('Editar'),
                             ],
                           ),
                         ),
-                      const PopupMenuItem(
-                        value: 'eliminar',
-                        child: Row(
-                          children: [
-                            Icon(Icons.delete, size: 20, color: Colors.red),
-                            SizedBox(width: 8),
-                            Text('Eliminar'),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
+                        if (onPonerEnCero != null && producto.cantidad > 0)
+                          const PopupMenuItem(
+                            value: 'cero',
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.restart_alt,
+                                  size: 20,
+                                  color: Colors.deepOrange,
+                                ),
+                                SizedBox(width: 8),
+                                Text('Poner en 0 (Tarde)'),
+                              ],
+                            ),
+                          ),
+                        if (!esFijo)
+                          const PopupMenuItem(
+                            value: 'eliminar',
+                            child: Row(
+                              children: [
+                                Icon(Icons.delete, size: 20, color: Colors.red),
+                                SizedBox(width: 8),
+                                Text('Eliminar'),
+                              ],
+                            ),
+                          ),
+                      ],
+                    ),
                 ],
               ),
               const SizedBox(height: 8),
@@ -160,7 +188,7 @@ class ProductoCard extends StatelessWidget {
                 child: Row(
                   children: [
                     Text(
-                      'Stock:',
+                      esSoloLectura ? 'Total histórico:' : 'Stock:',
                       style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w500,
@@ -184,49 +212,69 @@ class ProductoCard extends StatelessWidget {
                         ),
                       ),
                     ),
-                    if (onPonerEnCero != null && producto.cantidad > 0)
-                      Padding(
-                        padding: const EdgeInsets.only(right: 4),
-                        child: TextButton(
-                          style: TextButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 4,
+                    if (!esSoloLectura) ...[
+                      if (onPonerEnCero != null && producto.cantidad > 0)
+                        Padding(
+                          padding: const EdgeInsets.only(right: 4),
+                          child: TextButton(
+                            style: TextButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 4,
+                              ),
+                              minimumSize: Size.zero,
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              foregroundColor: Colors.deepOrange,
                             ),
-                            minimumSize: Size.zero,
-                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                            foregroundColor: Colors.deepOrange,
-                          ),
-                          onPressed: onPonerEnCero,
-                          child: const Text(
-                            'Poner en 0',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold,
+                            onPressed: onPonerEnCero,
+                            child: const Text(
+                              'Poner en 0',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
                           ),
                         ),
+                      IconButton(
+                        visualDensity: VisualDensity.compact,
+                        tooltip: 'Disminuir',
+                        icon: const Icon(
+                          Icons.remove_circle_outline,
+                          color: Colors.red,
+                          size: 26,
+                        ),
+                        onPressed: onDecrementar,
                       ),
-                    IconButton(
-                      visualDensity: VisualDensity.compact,
-                      tooltip: 'Disminuir',
-                      icon: const Icon(
-                        Icons.remove_circle_outline,
-                        color: Colors.red,
-                        size: 26,
+                      IconButton(
+                        visualDensity: VisualDensity.compact,
+                        tooltip: 'Aumentar',
+                        icon: const Icon(
+                          Icons.add_circle_outline,
+                          color: Colors.green,
+                          size: 26,
+                        ),
+                        onPressed: onIncrementar,
                       ),
-                      onPressed: onDecrementar,
-                    ),
-                    IconButton(
-                      visualDensity: VisualDensity.compact,
-                      tooltip: 'Aumentar',
-                      icon: const Icon(
-                        Icons.add_circle_outline,
-                        color: Colors.green,
-                        size: 26,
+                    ] else
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.orange.shade100,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          'Permanente',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.deepOrange.shade800,
+                          ),
+                        ),
                       ),
-                      onPressed: onIncrementar,
-                    ),
                   ],
                 ),
               ),

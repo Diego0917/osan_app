@@ -70,10 +70,12 @@ class _ReporteMensualScreenState extends State<ReporteMensualScreen> {
           }
 
           final filas = snapshot.data ?? [];
-          int totalBotellasMes = 0;
+          int totalDejadosMes = 0;
+          int totalVendidosMes = 0;
           double totalDineroMes = 0.0;
           for (final item in filas) {
-            totalBotellasMes += item.botellasMes;
+            totalDejadosMes += item.botellasDejadasMes;
+            totalVendidosMes += item.botellasVendidasMes;
             totalDineroMes += item.totalMes;
           }
 
@@ -159,63 +161,77 @@ class _ReporteMensualScreenState extends State<ReporteMensualScreen> {
                   color: Colors.orange.shade600,
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: Row(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Total Jugos del Mes',
-                            style: TextStyle(
-                              color: Colors.white70,
-                              fontSize: 12,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          FittedBox(
-                            fit: BoxFit.scaleDown,
-                            alignment: Alignment.centerLeft,
-                            child: Text(
-                              '${FormatoUtils.entero(totalBotellasMes)} jugos',
-                              maxLines: 1,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 22,
-                                fontWeight: FontWeight.bold,
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Jugos Vendidos del Mes',
+                                style: TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 12,
+                                ),
                               ),
-                            ),
+                              const SizedBox(height: 4),
+                              FittedBox(
+                                fit: BoxFit.scaleDown,
+                                alignment: Alignment.centerLeft,
+                                child: Text(
+                                  '${FormatoUtils.entero(totalVendidosMes)} vendidos',
+                                  maxLines: 1,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 22,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
-                        ],
-                      ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              const Text(
+                                'Ingresos del Mes',
+                                style: TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 12,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              FittedBox(
+                                fit: BoxFit.scaleDown,
+                                alignment: Alignment.centerRight,
+                                child: Text(
+                                  FormatoUtils.moneda(totalDineroMes),
+                                  maxLines: 1,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 22,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          const Text(
-                            'Ingresos del Mes',
-                            style: TextStyle(
-                              color: Colors.white70,
-                              fontSize: 12,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          FittedBox(
-                            fit: BoxFit.scaleDown,
-                            alignment: Alignment.centerRight,
-                            child: Text(
-                              FormatoUtils.moneda(totalDineroMes),
-                              maxLines: 1,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 22,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                        ],
+                    const SizedBox(height: 8),
+                    Text(
+                      'Jugos dejados en el mes: ${FormatoUtils.entero(totalDejadosMes)}',
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
                       ),
                     ),
                   ],
@@ -279,7 +295,7 @@ class _ReporteMensualScreenState extends State<ReporteMensualScreen> {
                                         ),
                                         const SizedBox(height: 2),
                                         Text(
-                                          '${FormatoUtils.entero(item.botellasMes)} jugos en el mes',
+                                          '${FormatoUtils.entero(item.botellasVendidasMes)} vendidos · ${FormatoUtils.entero(item.botellasDejadasMes)} dejados',
                                           style: TextStyle(
                                             fontSize: 13,
                                             color: Colors.grey.shade700,

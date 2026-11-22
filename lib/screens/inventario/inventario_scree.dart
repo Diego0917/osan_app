@@ -27,6 +27,7 @@ class _InventarioScreenState extends State<InventarioScreen> {
   }
 
   Future<void> _modificarCantidad(Producto producto, int cambio) async {
+    if (DatabaseHelper.esProductoHistorico(producto.nombre)) return;
     final nuevaCantidad = producto.cantidad + cambio;
     if (nuevaCantidad < 0) return;
 
@@ -51,13 +52,14 @@ class _InventarioScreenState extends State<InventarioScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text(
-          'Tarde cerrada: Jugos y Devoluciones puestos en 0 (Botellas y Vendidas se mantienen).',
+          'Tarde cerrada: Jugos y Devoluciones puestos en 0 (Botellas, Vendidas y Jugos salidos se mantienen).',
         ),
       ),
     );
   }
 
   Future<void> _ponerEnCeroIndividual(Producto producto) async {
+    if (!_permitePonerEnCeroRapido(producto)) return;
     await DatabaseHelper.instance.ponerProductoEnCeroPorNombre(producto.nombre);
     if (!mounted) return;
     _refreshInventario();
@@ -67,6 +69,7 @@ class _InventarioScreenState extends State<InventarioScreen> {
     required int stockBotellas,
     required int stockJugos,
     required int stockVendidas,
+    required int stockJugosSalidos,
   }) {
     final controllerCantidad = TextEditingController();
     String? mensajeError;
@@ -74,168 +77,177 @@ class _InventarioScreenState extends State<InventarioScreen> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setModalState) {
-          final cant = int.tryParse(controllerCantidad.text.trim()) ?? 0;
-          final cantValida = cant > 0 ? cant : 0;
-          final nuevasBotellas =
-              (stockBotellas - cantValida) < 0 ? 0 : (stockBotellas - cantValida);
-          final nuevosJugos = stockJugos + cantValida;
-          final nuevasVendidas = stockVendidas + cantValida;
+      builder: (ctx) => _AutoDisposeInventarioModal(
+        controllers: [controllerCantidad],
+        child: StatefulBuilder(
+          builder: (ctx, setModalState) {
+            final cant = int.tryParse(controllerCantidad.text.trim()) ?? 0;
+            final cantValida = cant > 0 ? cant : 0;
+            final nuevasBotellas =
+                (stockBotellas - cantValida) < 0 ? 0 : (stockBotellas - cantValida);
+            final nuevosJugos = stockJugos + cantValida;
+            final nuevasVendidas = stockVendidas + cantValida;
+            final nuevosJugosSalidos = stockJugosSalidos + cantValida;
 
-          return Padding(
-            padding: EdgeInsets.only(
-              top: 20,
-              left: 20,
-              right: 20,
-              bottom: MediaQuery.of(ctx).viewInsets.bottom + 20,
-            ),
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const Text(
-                    'Hacer Jugos (Noche / Mañana)',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    'Se restarán de tus Botellas disponibles y saldrán a venta. Las que regresen luego como devolución se restarán de Botellas vendidas.',
-                    style: TextStyle(fontSize: 13, color: Colors.grey.shade700),
-                  ),
-                  const SizedBox(height: 14),
-                  TextField(
-                    controller: controllerCantidad,
-                    keyboardType: TextInputType.number,
-                    onChanged: (_) => setModalState(() {
-                      mensajeError = null;
-                    }),
-                    decoration: InputDecoration(
-                      labelText: 'Cantidad de jugos hechos *',
-                      prefixIcon: const Icon(Icons.local_drink),
-                      errorText: mensajeError,
-                      border: const OutlineInputBorder(),
+            return Padding(
+              padding: EdgeInsets.only(
+                top: 20,
+                left: 20,
+                right: 20,
+                bottom: MediaQuery.of(ctx).viewInsets.bottom + 20,
+              ),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const Text(
+                      'Hacer Jugos (Noche / Mañana)',
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                     ),
-                  ),
-                  const SizedBox(height: 12),
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.orange.shade50,
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.orange.shade200),
+                    const SizedBox(height: 6),
+                    Text(
+                      'Se restarán de tus Botellas disponibles, saldrán a venta y se acumularán en Jugos salidos (histórico permanente).',
+                      style: TextStyle(fontSize: 13, color: Colors.grey.shade700),
                     ),
-                    child: Column(
-                      children: [
-                        Row(
-                          children: [
-                            const Expanded(
-                              child: Text(
-                                'Botellas en casa:',
-                                style: TextStyle(fontSize: 13),
-                              ),
-                            ),
-                            FittedBox(
-                              fit: BoxFit.scaleDown,
-                              child: Text(
-                                '${FormatoUtils.entero(stockBotellas)} → ${FormatoUtils.entero(nuevasBotellas)}',
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 14,
+                    const SizedBox(height: 14),
+                    TextField(
+                      controller: controllerCantidad,
+                      keyboardType: TextInputType.number,
+                      onChanged: (_) => setModalState(() {
+                        mensajeError = null;
+                      }),
+                      decoration: InputDecoration(
+                        labelText: 'Cantidad de jugos hechos *',
+                        prefixIcon: const Icon(Icons.local_drink),
+                        errorText: mensajeError,
+                        border: const OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.orange.shade50,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.orange.shade200),
+                      ),
+                      child: Column(
+                        children: [
+                          Row(
+                            children: [
+                              const Expanded(
+                                child: Text(
+                                  'Botellas en casa:',
+                                  style: TextStyle(fontSize: 13),
                                 ),
                               ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 6),
-                        Row(
-                          children: [
-                            const Expanded(
-                              child: Text(
-                                'Jugos del día:',
-                                style: TextStyle(fontSize: 13),
-                              ),
-                            ),
-                            FittedBox(
-                              fit: BoxFit.scaleDown,
-                              child: Text(
-                                '${FormatoUtils.entero(stockJugos)} → ${FormatoUtils.entero(nuevosJugos)}',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 14,
-                                  color: Colors.green.shade800,
+                              FittedBox(
+                                fit: BoxFit.scaleDown,
+                                child: Text(
+                                  '${FormatoUtils.entero(stockBotellas)} → ${FormatoUtils.entero(nuevasBotellas)}',
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 14,
+                                  ),
                                 ),
                               ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 6),
-                        Row(
-                          children: [
-                            const Expanded(
-                              child: Text(
-                                'Botellas vendidas (en calle):',
-                                style: TextStyle(fontSize: 13),
-                              ),
-                            ),
-                            FittedBox(
-                              fit: BoxFit.scaleDown,
-                              child: Text(
-                                '${FormatoUtils.entero(stockVendidas)} → ${FormatoUtils.entero(nuevasVendidas)}',
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 14,
-                                  color: Colors.deepOrange,
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          Row(
+                            children: [
+                              const Expanded(
+                                child: Text(
+                                  'Jugos del día:',
+                                  style: TextStyle(fontSize: 13),
                                 ),
                               ),
-                            ),
-                          ],
-                        ),
-                      ],
+                              FittedBox(
+                                fit: BoxFit.scaleDown,
+                                child: Text(
+                                  '${FormatoUtils.entero(stockJugos)} → ${FormatoUtils.entero(nuevosJugos)}',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 14,
+                                    color: Colors.green.shade800,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          Row(
+                            children: [
+                              const Expanded(
+                                child: Text(
+                                  'Botellas vendidas (en calle):',
+                                  style: TextStyle(fontSize: 13),
+                                ),
+                              ),
+                              FittedBox(
+                                fit: BoxFit.scaleDown,
+                                child: Text(
+                                  '${FormatoUtils.entero(stockVendidas)} → ${FormatoUtils.entero(nuevasVendidas)}',
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 14,
+                                    color: Colors.deepOrange,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          Row(
+                            children: [
+                              const Expanded(
+                                child: Text(
+                                  'Jugos salidos (histórico):',
+                                  style: TextStyle(fontSize: 13),
+                                ),
+                              ),
+                              FittedBox(
+                                fit: BoxFit.scaleDown,
+                                child: Text(
+                                  '${FormatoUtils.entero(stockJugosSalidos)} → ${FormatoUtils.entero(nuevosJugosSalidos)}',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 14,
+                                    color: Colors.blue.shade800,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 15),
-                  ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.orange,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                    ),
-                    onPressed: () async {
-                      final cantidad =
-                          int.tryParse(controllerCantidad.text.trim()) ?? 0;
-                      if (cantidad <= 0) {
-                        setModalState(() {
-                          mensajeError = 'Ingresa una cantidad mayor a 0.';
-                        });
-                        return;
-                      }
-                      if (stockBotellas > 0 && cantidad > stockBotellas) {
-                        setModalState(() {
-                          mensajeError =
-                              'Solo tienes ${FormatoUtils.entero(stockBotellas)} botellas disponibles.';
-                        });
-                        return;
-                      }
-
-                      await DatabaseHelper.instance.producirJugos(cantidad);
-                      if (ctx.mounted) {
-                        Navigator.pop(ctx);
-                      }
-                      if (mounted) {
-                        _refreshInventario();
-                      }
-                    },
-                    icon: const Icon(Icons.check),
-                    label: const Text('Registrar Jugos Preparados'),
-                  ),
-                  if (stockJugos > 0) ...[
-                    const SizedBox(height: 8),
-                    TextButton.icon(
+                    const SizedBox(height: 15),
+                    ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.orange,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
                       onPressed: () async {
-                        await DatabaseHelper.instance
-                            .ponerProductoEnCeroPorNombre('jugos');
+                        final cantidad =
+                            int.tryParse(controllerCantidad.text.trim()) ?? 0;
+                        if (cantidad <= 0) {
+                          setModalState(() {
+                            mensajeError = 'Ingresa una cantidad mayor a 0.';
+                          });
+                          return;
+                        }
+                        if (stockBotellas > 0 && cantidad > stockBotellas) {
+                          setModalState(() {
+                            mensajeError =
+                                'Solo tienes ${FormatoUtils.entero(stockBotellas)} botellas disponibles.';
+                          });
+                          return;
+                        }
+
+                        await DatabaseHelper.instance.producirJugos(cantidad);
                         if (ctx.mounted) {
                           Navigator.pop(ctx);
                         }
@@ -243,17 +255,34 @@ class _InventarioScreenState extends State<InventarioScreen> {
                           _refreshInventario();
                         }
                       },
-                      icon: const Icon(Icons.restart_alt, size: 18),
-                      label: const Text(
-                        'Poner Jugos en 0 (Cierre de tarde)',
-                      ),
+                      icon: const Icon(Icons.check),
+                      label: const Text('Registrar Jugos Preparados'),
                     ),
+                    if (stockJugos > 0) ...[
+                      const SizedBox(height: 8),
+                      TextButton.icon(
+                        onPressed: () async {
+                          await DatabaseHelper.instance
+                              .ponerProductoEnCeroPorNombre('jugos');
+                          if (ctx.mounted) {
+                            Navigator.pop(ctx);
+                          }
+                          if (mounted) {
+                            _refreshInventario();
+                          }
+                        },
+                        icon: const Icon(Icons.restart_alt, size: 18),
+                        label: const Text(
+                          'Poner Jugos en 0 (Cierre de tarde)',
+                        ),
+                      ),
+                    ],
                   ],
-                ],
+                ),
               ),
-            ),
-          );
-        },
+            );
+          },
+        ),
       ),
     );
   }
@@ -269,15 +298,190 @@ class _InventarioScreenState extends State<InventarioScreen> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setModalState) {
-          final cant = int.tryParse(controllerCantidad.text.trim()) ?? 0;
-          final cantValida = cant > 0 ? cant : 0;
-          final nuevasBotellas = stockBotellas + cantValida;
-          final nuevasVendidas =
-              (stockVendidas - cantValida) < 0 ? 0 : (stockVendidas - cantValida);
+      builder: (ctx) => _AutoDisposeInventarioModal(
+        controllers: [controllerCantidad],
+        child: StatefulBuilder(
+          builder: (ctx, setModalState) {
+            final cant = int.tryParse(controllerCantidad.text.trim()) ?? 0;
+            final cantValida = cant > 0 ? cant : 0;
+            final nuevasBotellas = stockBotellas + cantValida;
+            final nuevasVendidas =
+                (stockVendidas - cantValida) < 0 ? 0 : (stockVendidas - cantValida);
 
-          return Padding(
+            return Padding(
+              padding: EdgeInsets.only(
+                top: 20,
+                left: 20,
+                right: 20,
+                bottom: MediaQuery.of(ctx).viewInsets.bottom + 20,
+              ),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const Text(
+                      'Cargar Devoluciones (Mañana)',
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'Las botellas devueltas se suman a tus Botellas disponibles para reutilizarse, y las que no regresaron quedan en Botellas vendidas.',
+                      style: TextStyle(fontSize: 13, color: Colors.grey.shade700),
+                    ),
+                    const SizedBox(height: 14),
+                    TextField(
+                      controller: controllerCantidad,
+                      keyboardType: TextInputType.number,
+                      onChanged: (_) => setModalState(() {
+                        mensajeError = null;
+                      }),
+                      decoration: InputDecoration(
+                        labelText: 'Botellas devueltas recogidas esta mañana *',
+                        prefixIcon: const Icon(Icons.autorenew),
+                        errorText: mensajeError,
+                        border: const OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.green.shade50,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.green.shade200),
+                      ),
+                      child: Column(
+                        children: [
+                          Row(
+                            children: [
+                              const Expanded(
+                                child: Text(
+                                  'Botellas disponibles (se suman):',
+                                  style: TextStyle(fontSize: 13),
+                                ),
+                              ),
+                              FittedBox(
+                                fit: BoxFit.scaleDown,
+                                child: Text(
+                                  '${FormatoUtils.entero(stockBotellas)} → ${FormatoUtils.entero(nuevasBotellas)}',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 15,
+                                    color: Colors.green.shade800,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          Row(
+                            children: [
+                              const Expanded(
+                                child: Text(
+                                  'Botellas vendidas (no regresaron):',
+                                  style: TextStyle(fontSize: 13),
+                                ),
+                              ),
+                              FittedBox(
+                                fit: BoxFit.scaleDown,
+                                child: Text(
+                                  '${FormatoUtils.entero(stockVendidas)} → ${FormatoUtils.entero(nuevasVendidas)}',
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 15,
+                                    color: Colors.deepOrange,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 15),
+                    ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.green.shade700,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                      onPressed: () async {
+                        final cantidad =
+                            int.tryParse(controllerCantidad.text.trim()) ?? 0;
+                        if (cantidad <= 0) {
+                          setModalState(() {
+                            mensajeError = 'Ingresa una cantidad mayor a 0.';
+                          });
+                          return;
+                        }
+
+                        await DatabaseHelper.instance
+                            .registrarDevoluciones(cantidad);
+                        if (ctx.mounted) {
+                          Navigator.pop(ctx);
+                        }
+                        if (mounted) {
+                          _refreshInventario();
+                        }
+                      },
+                      icon: const Icon(Icons.add_task),
+                      label: const Text('Cargar y Sumar a Botellas'),
+                    ),
+                    if (stockDevoluciones > 0) ...[
+                      const SizedBox(height: 8),
+                      TextButton.icon(
+                        onPressed: () async {
+                          await DatabaseHelper.instance
+                              .reiniciarContadorDevoluciones();
+                          if (ctx.mounted) {
+                            Navigator.pop(ctx);
+                          }
+                          if (mounted) {
+                            _refreshInventario();
+                          }
+                        },
+                        icon: const Icon(Icons.restart_alt, size: 18),
+                        label: const Text(
+                          'Poner Devoluciones en 0 (sin restar Botellas)',
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  void _mostrarModalFormularioProducto({Producto? productoExistente}) {
+    if (productoExistente != null &&
+        DatabaseHelper.esProductoHistorico(productoExistente.nombre)) {
+      return;
+    }
+
+    final esEdicion = productoExistente != null;
+    final esFijo =
+        productoExistente != null &&
+        DatabaseHelper.esProductoFijo(productoExistente.nombre);
+    final controllerNombre = TextEditingController(
+      text: productoExistente?.nombre ?? '',
+    );
+    final controllerCantidad = TextEditingController(
+      text: productoExistente != null ? '${productoExistente.cantidad}' : '',
+    );
+    String? errorNombre;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) => _AutoDisposeInventarioModal(
+        controllers: [controllerNombre, controllerCantidad],
+        child: StatefulBuilder(
+          builder: (ctx, setModalState) => Padding(
             padding: EdgeInsets.only(
               top: 20,
               left: 20,
@@ -289,104 +493,88 @@ class _InventarioScreenState extends State<InventarioScreen> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const Text(
-                    'Cargar Devoluciones (Mañana)',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 6),
                   Text(
-                    'Las botellas devueltas se suman a tus Botellas disponibles para reutilizarse, y las que no regresaron quedan en Botellas vendidas.',
-                    style: TextStyle(fontSize: 13, color: Colors.grey.shade700),
-                  ),
-                  const SizedBox(height: 14),
-                  TextField(
-                    controller: controllerCantidad,
-                    keyboardType: TextInputType.number,
-                    onChanged: (_) => setModalState(() {
-                      mensajeError = null;
-                    }),
-                    decoration: InputDecoration(
-                      labelText: 'Botellas devueltas recogidas esta mañana *',
-                      prefixIcon: const Icon(Icons.autorenew),
-                      errorText: mensajeError,
-                      border: const OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.green.shade50,
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.green.shade200),
-                    ),
-                    child: Column(
-                      children: [
-                        Row(
-                          children: [
-                            const Expanded(
-                              child: Text(
-                                'Botellas disponibles (se suman):',
-                                style: TextStyle(fontSize: 13),
-                              ),
-                            ),
-                            FittedBox(
-                              fit: BoxFit.scaleDown,
-                              child: Text(
-                                '${FormatoUtils.entero(stockBotellas)} → ${FormatoUtils.entero(nuevasBotellas)}',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 15,
-                                  color: Colors.green.shade800,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 6),
-                        Row(
-                          children: [
-                            const Expanded(
-                              child: Text(
-                                'Botellas vendidas (no regresaron):',
-                                style: TextStyle(fontSize: 13),
-                              ),
-                            ),
-                            FittedBox(
-                              fit: BoxFit.scaleDown,
-                              child: Text(
-                                '${FormatoUtils.entero(stockVendidas)} → ${FormatoUtils.entero(nuevasVendidas)}',
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 15,
-                                  color: Colors.deepOrange,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
+                    esEdicion
+                        ? 'Editar Producto / Insumo'
+                        : 'Agregar Nuevo Producto / Insumo',
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
                     ),
                   ),
                   const SizedBox(height: 15),
-                  ElevatedButton.icon(
+                  TextField(
+                    controller: controllerNombre,
+                    enabled: !esFijo,
+                    readOnly: esFijo,
+                    textCapitalization: TextCapitalization.sentences,
+                    onChanged: (_) => setModalState(() {
+                      errorNombre = null;
+                    }),
+                    decoration: InputDecoration(
+                      labelText: 'Nombre del producto',
+                      prefixIcon:
+                          esFijo ? const Icon(Icons.lock_outline) : null,
+                      errorText: errorNombre,
+                      helperText: esFijo
+                          ? 'Variable fija del sistema (el nombre no se puede modificar)'
+                          : null,
+                      border: const OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: controllerCantidad,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: 'Cantidad en stock',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 15),
+                  ElevatedButton(
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.green.shade700,
+                      backgroundColor: Colors.orange,
                       foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 12),
                     ),
                     onPressed: () async {
-                      final cantidad =
-                          int.tryParse(controllerCantidad.text.trim()) ?? 0;
-                      if (cantidad <= 0) {
+                      final nombre = esFijo
+                          ? productoExistente.nombre
+                          : controllerNombre.text.trim();
+                      final cantidadParsed =
+                          int.tryParse(controllerCantidad.text) ?? 0;
+                      final cantidad = cantidadParsed < 0 ? 0 : cantidadParsed;
+
+                      if (nombre.isEmpty) {
                         setModalState(() {
-                          mensajeError = 'Ingresa una cantidad mayor a 0.';
+                          errorNombre = 'Ingresa un nombre válido.';
                         });
                         return;
                       }
 
-                      await DatabaseHelper.instance
-                          .registrarDevoluciones(cantidad);
+                      if (!esEdicion && DatabaseHelper.esProductoFijo(nombre)) {
+                        setModalState(() {
+                          errorNombre =
+                              'Ese nombre está reservado para una variable fija del inventario.';
+                        });
+                        return;
+                      }
+
+                      if (productoExistente != null) {
+                        await DatabaseHelper.instance.updateProducto(
+                          Producto(
+                            id: productoExistente.id,
+                            nombre: nombre,
+                            cantidad: cantidad,
+                          ),
+                          cantidadAnterior: productoExistente.cantidad,
+                        );
+                      } else {
+                        await DatabaseHelper.instance.insertProducto(
+                          Producto(nombre: nombre, cantidad: cantidad),
+                        );
+                      }
+
                       if (ctx.mounted) {
                         Navigator.pop(ctx);
                       }
@@ -394,127 +582,11 @@ class _InventarioScreenState extends State<InventarioScreen> {
                         _refreshInventario();
                       }
                     },
-                    icon: const Icon(Icons.add_task),
-                    label: const Text('Cargar y Sumar a Botellas'),
+                    child: Text(esEdicion ? 'Actualizar' : 'Guardar'),
                   ),
-                  if (stockDevoluciones > 0) ...[
-                    const SizedBox(height: 8),
-                    TextButton.icon(
-                      onPressed: () async {
-                        await DatabaseHelper.instance
-                            .reiniciarContadorDevoluciones();
-                        if (ctx.mounted) {
-                          Navigator.pop(ctx);
-                        }
-                        if (mounted) {
-                          _refreshInventario();
-                        }
-                      },
-                      icon: const Icon(Icons.restart_alt, size: 18),
-                      label: const Text(
-                        'Poner Devoluciones en 0 (sin restar Botellas)',
-                      ),
-                    ),
-                  ],
                 ],
               ),
             ),
-          );
-        },
-      ),
-    );
-  }
-
-  void _mostrarModalFormularioProducto({Producto? productoExistente}) {
-    final esEdicion = productoExistente != null;
-    final controllerNombre = TextEditingController(
-      text: productoExistente?.nombre ?? '',
-    );
-    final controllerCantidad = TextEditingController(
-      text: productoExistente != null ? '${productoExistente.cantidad}' : '',
-    );
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      builder: (ctx) => Padding(
-        padding: EdgeInsets.only(
-          top: 20,
-          left: 20,
-          right: 20,
-          bottom: MediaQuery.of(ctx).viewInsets.bottom + 20,
-        ),
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                esEdicion
-                    ? 'Editar Producto / Insumo'
-                    : 'Agregar Nuevo Producto / Insumo',
-                style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 15),
-              TextField(
-                controller: controllerNombre,
-                textCapitalization: TextCapitalization.sentences,
-                decoration: const InputDecoration(
-                  labelText: 'Nombre del producto',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 10),
-              TextField(
-                controller: controllerCantidad,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                  labelText: 'Cantidad en stock',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 15),
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.orange,
-                  foregroundColor: Colors.white,
-                ),
-                onPressed: () async {
-                  final nombre = controllerNombre.text.trim();
-                  final cantidadParsed =
-                      int.tryParse(controllerCantidad.text) ?? 0;
-                  final cantidad = cantidadParsed < 0 ? 0 : cantidadParsed;
-
-                  if (nombre.isEmpty) return;
-
-                  if (esEdicion) {
-                    await DatabaseHelper.instance.updateProducto(
-                      Producto(
-                        id: productoExistente.id,
-                        nombre: nombre,
-                        cantidad: cantidad,
-                      ),
-                      cantidadAnterior: productoExistente.cantidad,
-                    );
-                  } else {
-                    await DatabaseHelper.instance.insertProducto(
-                      Producto(nombre: nombre, cantidad: cantidad),
-                    );
-                  }
-
-                  if (ctx.mounted) {
-                    Navigator.pop(ctx);
-                  }
-                  if (mounted) {
-                    _refreshInventario();
-                  }
-                },
-                child: Text(esEdicion ? 'Actualizar' : 'Guardar'),
-              ),
-            ],
           ),
         ),
       ),
@@ -523,6 +595,7 @@ class _InventarioScreenState extends State<InventarioScreen> {
 
   Future<void> _confirmarEliminarProducto(Producto producto) async {
     if (producto.id == null) return;
+    if (DatabaseHelper.esProductoFijo(producto.nombre)) return;
 
     final confirmar = await showDialog<bool>(
       context: context,
@@ -561,14 +634,13 @@ class _InventarioScreenState extends State<InventarioScreen> {
     if (lower == 'jugos') return 1;
     if (lower == 'devoluciones') return 2;
     if (lower == 'botellas vendidas') return 3;
-    return 4;
+    if (lower == 'jugos salidos') return 4;
+    return 5;
   }
 
   bool _permitePonerEnCeroRapido(Producto p) {
     final lower = p.nombre.trim().toLowerCase();
-    return lower == 'jugos' ||
-        lower == 'devoluciones' ||
-        lower == 'botellas vendidas';
+    return lower == 'jugos' || lower == 'devoluciones';
   }
 
   @override
@@ -601,12 +673,14 @@ class _InventarioScreenState extends State<InventarioScreen> {
           int stockJugos = 0;
           int stockDevoluciones = 0;
           int stockVendidas = 0;
+          int stockJugosSalidos = 0;
           for (final p in productos) {
             final lower = p.nombre.trim().toLowerCase();
             if (lower == 'botellas') stockBotellas = p.cantidad;
             if (lower == 'jugos') stockJugos = p.cantidad;
             if (lower == 'devoluciones') stockDevoluciones = p.cantidad;
             if (lower == 'botellas vendidas') stockVendidas = p.cantidad;
+            if (lower == 'jugos salidos') stockJugosSalidos = p.cantidad;
           }
 
           return ListView.builder(
@@ -619,10 +693,12 @@ class _InventarioScreenState extends State<InventarioScreen> {
                   stockJugos: stockJugos,
                   stockDevoluciones: stockDevoluciones,
                   stockVendidas: stockVendidas,
+                  stockJugosSalidos: stockJugosSalidos,
                   onHacerJugos: () => _mostrarModalHacerJugos(
                     stockBotellas: stockBotellas,
                     stockJugos: stockJugos,
                     stockVendidas: stockVendidas,
+                    stockJugosSalidos: stockJugosSalidos,
                   ),
                   onCargarDevoluciones: () => _mostrarModalCargarDevoluciones(
                     stockBotellas: stockBotellas,
@@ -634,8 +710,14 @@ class _InventarioScreenState extends State<InventarioScreen> {
               }
 
               final item = productos[index - 1];
+              final esFijo = DatabaseHelper.esProductoFijo(item.nombre);
+              final esSoloLectura =
+                  DatabaseHelper.esProductoHistorico(item.nombre);
+
               return ProductoCard(
                 producto: item,
+                esFijo: esFijo,
+                esSoloLectura: esSoloLectura,
                 onDecrementar: () => _modificarCantidad(item, -1),
                 onIncrementar: () => _modificarCantidad(item, 1),
                 onEditar: () =>
@@ -663,6 +745,7 @@ class _PanelCicloBotellas extends StatelessWidget {
   final int stockJugos;
   final int stockDevoluciones;
   final int stockVendidas;
+  final int stockJugosSalidos;
   final VoidCallback onHacerJugos;
   final VoidCallback onCargarDevoluciones;
   final VoidCallback onCerrarTarde;
@@ -672,6 +755,7 @@ class _PanelCicloBotellas extends StatelessWidget {
     required this.stockJugos,
     required this.stockDevoluciones,
     required this.stockVendidas,
+    required this.stockJugosSalidos,
     required this.onHacerJugos,
     required this.onCargarDevoluciones,
     required this.onCerrarTarde,
@@ -738,6 +822,62 @@ class _PanelCicloBotellas extends StatelessWidget {
                 ),
               ),
             ],
+          ),
+          const SizedBox(height: 8),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.24),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.35),
+              ),
+            ),
+            child: Row(
+              children: [
+                const Icon(
+                  Icons.trending_up,
+                  color: Colors.white,
+                  size: 22,
+                ),
+                const SizedBox(width: 10),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Jugos Salidos (Histórico)',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 13,
+                        ),
+                      ),
+                      Text(
+                        'Acumulado permanente • nunca se reinicia',
+                        style: TextStyle(
+                          color: Colors.white70,
+                          fontSize: 11,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    FormatoUtils.entero(stockJugosSalidos),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 22,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
           const SizedBox(height: 12),
           Row(
@@ -876,4 +1016,32 @@ class _CajaMetricaEnvase extends StatelessWidget {
       ),
     );
   }
+}
+
+class _AutoDisposeInventarioModal extends StatefulWidget {
+  final List<ChangeNotifier> controllers;
+  final Widget child;
+
+  const _AutoDisposeInventarioModal({
+    required this.controllers,
+    required this.child,
+  });
+
+  @override
+  State<_AutoDisposeInventarioModal> createState() =>
+      _AutoDisposeInventarioModalState();
+}
+
+class _AutoDisposeInventarioModalState
+    extends State<_AutoDisposeInventarioModal> {
+  @override
+  void dispose() {
+    for (final controller in widget.controllers) {
+      controller.dispose();
+    }
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
 }

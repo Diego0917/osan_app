@@ -26,11 +26,31 @@ class ClientesListScreen extends StatefulWidget {
 
 class _ClientesListScreenState extends State<ClientesListScreen> {
   late Future<_DatosClientesSemana> _datosFuture;
+  final TextEditingController _searchController = TextEditingController();
+  String _queryBusqueda = '';
 
   @override
   void initState() {
     super.initState();
     _refreshClientes();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  String _normalizarTexto(String texto) {
+    return texto
+        .trim()
+        .toLowerCase()
+        .replaceAll('á', 'a')
+        .replaceAll('é', 'e')
+        .replaceAll('í', 'i')
+        .replaceAll('ó', 'o')
+        .replaceAll('ú', 'u')
+        .replaceAll('ü', 'u');
   }
 
   void _refreshClientes() {
@@ -92,11 +112,17 @@ class _ClientesListScreenState extends State<ClientesListScreen> {
     }
   }
 
-  Future<void> _abrirDetalleCliente(Cliente cliente) async {
+  Future<void> _abrirDetalleCliente(
+    Cliente cliente, {
+    TipoEntrega pestanaInicial = TipoEntrega.dejado,
+  }) async {
     await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => ClienteEntregasScreen(cliente: cliente),
+        builder: (_) => ClienteEntregasScreen(
+          cliente: cliente,
+          pestanaInicial: pestanaInicial,
+        ),
       ),
     );
     if (!mounted) return;
@@ -112,14 +138,6 @@ class _ClientesListScreenState extends State<ClientesListScreen> {
     );
     if (!mounted) return;
     _refreshClientes();
-  }
-
-  Future<void> _registrarEntrega(Cliente cliente) async {
-    final guardado = await mostrarModalEntrega(context, cliente: cliente);
-    if (!mounted) return;
-    if (guardado) {
-      _refreshClientes();
-    }
   }
 
   Future<void> _abrirFormulario({Cliente? clienteExistente}) async {
@@ -173,21 +191,30 @@ class _ClientesListScreenState extends State<ClientesListScreen> {
           final clientes = snapshot.data!.clientes;
           final resumenes = snapshot.data!.resumenes;
 
-          int botellasGlobalHoy = 0;
+          int vendidosGlobalHoy = 0;
           double totalGlobalHoy = 0.0;
-          int botellasGlobalSemana = 0;
+          int vendidosGlobalSemana = 0;
           double totalGlobalSemana = 0.0;
-          int botellasGlobalMes = 0;
+          int vendidosGlobalMes = 0;
           double totalGlobalMes = 0.0;
 
           for (final r in resumenes.values) {
-            botellasGlobalHoy += r.botellasHoy;
+            vendidosGlobalHoy += r.botellasVendidasHoy;
             totalGlobalHoy += r.totalHoy;
-            botellasGlobalSemana += r.botellasSemana;
+            vendidosGlobalSemana += r.botellasVendidasSemana;
             totalGlobalSemana += r.totalSemana;
-            botellasGlobalMes += r.botellasMes;
+            vendidosGlobalMes += r.botellasVendidasMes;
             totalGlobalMes += r.totalMes;
           }
+
+          final queryNormalizado = _normalizarTexto(_queryBusqueda);
+          final clientesFiltrados = queryNormalizado.isEmpty
+              ? clientes
+              : clientes
+                  .where(
+                    (c) => _normalizarTexto(c.nombre).contains(queryNormalizado),
+                  )
+                  .toList();
 
           return Column(
             children: [
@@ -258,7 +285,7 @@ class _ClientesListScreenState extends State<ClientesListScreen> {
                           child: _CajaResumenGlobal(
                             titulo: 'Total del Día',
                             jugos:
-                                '${FormatoUtils.entero(botellasGlobalHoy)} jugos',
+                                '${FormatoUtils.entero(vendidosGlobalHoy)} vend.',
                             monto: FormatoUtils.moneda(totalGlobalHoy),
                           ),
                         ),
@@ -267,7 +294,7 @@ class _ClientesListScreenState extends State<ClientesListScreen> {
                           child: _CajaResumenGlobal(
                             titulo: 'Semana Actual',
                             jugos:
-                                '${FormatoUtils.entero(botellasGlobalSemana)} jugos',
+                                '${FormatoUtils.entero(vendidosGlobalSemana)} vend.',
                             monto: FormatoUtils.moneda(totalGlobalSemana),
                           ),
                         ),
@@ -276,7 +303,7 @@ class _ClientesListScreenState extends State<ClientesListScreen> {
                           child: _CajaResumenGlobal(
                             titulo: FechaSemanaUtils.meses[ahora.month - 1],
                             jugos:
-                                '${FormatoUtils.entero(botellasGlobalMes)} jugos',
+                                '${FormatoUtils.entero(vendidosGlobalMes)} vend.',
                             monto: FormatoUtils.moneda(totalGlobalMes),
                           ),
                         ),
@@ -285,26 +312,95 @@ class _ClientesListScreenState extends State<ClientesListScreen> {
                   ],
                 ),
               ),
-              Expanded(
-                child: ListView.builder(
-                  padding: const EdgeInsets.only(top: 4, bottom: 80),
-                  itemCount: clientes.length,
-                  itemBuilder: (context, index) {
-                    final cliente = clientes[index];
-                    final resumen =
-                        resumenes[cliente.id] ?? const ResumenClienteSemana();
-
-                    return ClienteCard(
-                      cliente: cliente,
-                      resumen: resumen,
-                      onVerDetalle: () => _abrirDetalleCliente(cliente),
-                      onRegistrarEntrega: () => _registrarEntrega(cliente),
-                      onEditar: () =>
-                          _abrirFormulario(clienteExistente: cliente),
-                      onEliminar: () => _confirmarEliminarCliente(cliente),
-                    );
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+                child: TextField(
+                  controller: _searchController,
+                  onChanged: (valor) {
+                    setState(() {
+                      _queryBusqueda = valor;
+                    });
                   },
+                  decoration: InputDecoration(
+                    hintText: 'Buscar cliente por nombre...',
+                    prefixIcon: const Icon(Icons.search),
+                    suffixIcon: _queryBusqueda.isNotEmpty
+                        ? IconButton(
+                            tooltip: 'Limpiar búsqueda',
+                            onPressed: () {
+                              _searchController.clear();
+                              setState(() {
+                                _queryBusqueda = '';
+                              });
+                            },
+                            icon: const Icon(Icons.close),
+                          )
+                        : null,
+                    isDense: true,
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 10,
+                    ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
                 ),
+              ),
+              Expanded(
+                child: clientesFiltrados.isEmpty
+                    ? Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(20),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                'No se encontraron clientes para "${_queryBusqueda.trim()}".',
+                                textAlign: TextAlign.center,
+                              ),
+                              const SizedBox(height: 8),
+                              TextButton.icon(
+                                onPressed: () {
+                                  _searchController.clear();
+                                  setState(() {
+                                    _queryBusqueda = '';
+                                  });
+                                },
+                                icon: const Icon(Icons.clear),
+                                label: const Text('Limpiar búsqueda'),
+                              ),
+                            ],
+                          ),
+                        ),
+                      )
+                    : ListView.builder(
+                        padding: const EdgeInsets.only(top: 4, bottom: 80),
+                        itemCount: clientesFiltrados.length,
+                        itemBuilder: (context, index) {
+                          final cliente = clientesFiltrados[index];
+                          final resumen =
+                              resumenes[cliente.id] ??
+                              const ResumenClienteSemana();
+
+                          return ClienteCard(
+                            cliente: cliente,
+                            resumen: resumen,
+                            onAbrirDejados: () => _abrirDetalleCliente(
+                              cliente,
+                              pestanaInicial: TipoEntrega.dejado,
+                            ),
+                            onAbrirVendidos: () => _abrirDetalleCliente(
+                              cliente,
+                              pestanaInicial: TipoEntrega.vendido,
+                            ),
+                            onEditar: () =>
+                                _abrirFormulario(clienteExistente: cliente),
+                            onEliminar: () =>
+                                _confirmarEliminarCliente(cliente),
+                          );
+                        },
+                      ),
               ),
             ],
           );

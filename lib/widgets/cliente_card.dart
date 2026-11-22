@@ -5,8 +5,8 @@ import '../models/entrega.dart';
 class ClienteCard extends StatelessWidget {
   final Cliente cliente;
   final ResumenClienteSemana resumen;
-  final VoidCallback onVerDetalle;
-  final VoidCallback onRegistrarEntrega;
+  final VoidCallback onAbrirDejados;
+  final VoidCallback onAbrirVendidos;
   final VoidCallback onEditar;
   final VoidCallback onEliminar;
 
@@ -14,8 +14,8 @@ class ClienteCard extends StatelessWidget {
     super.key,
     required this.cliente,
     required this.resumen,
-    required this.onVerDetalle,
-    required this.onRegistrarEntrega,
+    required this.onAbrirDejados,
+    required this.onAbrirVendidos,
     required this.onEditar,
     required this.onEliminar,
   });
@@ -27,7 +27,7 @@ class ClienteCard extends StatelessWidget {
       elevation: 2,
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
-        onTap: onVerDetalle,
+        onTap: onAbrirDejados,
         child: Padding(
           padding: const EdgeInsets.all(12),
           child: Column(
@@ -79,8 +79,10 @@ class ClienteCard extends StatelessWidget {
                   PopupMenuButton<String>(
                     padding: EdgeInsets.zero,
                     onSelected: (valor) {
-                      if (valor == 'detalle') {
-                        onVerDetalle();
+                      if (valor == 'dejados') {
+                        onAbrirDejados();
+                      } else if (valor == 'vendidos') {
+                        onAbrirVendidos();
                       } else if (valor == 'editar') {
                         onEditar();
                       } else if (valor == 'eliminar') {
@@ -89,16 +91,30 @@ class ClienteCard extends StatelessWidget {
                     },
                     itemBuilder: (context) => const [
                       PopupMenuItem(
-                        value: 'detalle',
+                        value: 'dejados',
                         child: Row(
                           children: [
                             Icon(
-                              Icons.receipt_long,
+                              Icons.local_drink,
                               size: 20,
                               color: Colors.orange,
                             ),
                             SizedBox(width: 8),
-                            Text('Ver semana'),
+                            Text('Jugos dejados'),
+                          ],
+                        ),
+                      ),
+                      PopupMenuItem(
+                        value: 'vendidos',
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.sell,
+                              size: 20,
+                              color: Colors.green,
+                            ),
+                            SizedBox(width: 8),
+                            Text('Jugos vendidos'),
                           ],
                         ),
                       ),
@@ -138,7 +154,8 @@ class ClienteCard extends StatelessWidget {
                     Expanded(
                       child: _DatoResumen(
                         etiqueta: 'Hoy',
-                        jugos: '${FormatoUtils.entero(resumen.botellasHoy)} jugos',
+                        jugos:
+                            'Dej: ${FormatoUtils.entero(resumen.botellasDejadasHoy)} · Ven: ${FormatoUtils.entero(resumen.botellasVendidasHoy)}',
                         dinero: FormatoUtils.moneda(resumen.totalHoy),
                       ),
                     ),
@@ -147,7 +164,7 @@ class ClienteCard extends StatelessWidget {
                       child: _DatoResumen(
                         etiqueta: 'Semana',
                         jugos:
-                            '${FormatoUtils.entero(resumen.botellasSemana)} jugos',
+                            'Dej: ${FormatoUtils.entero(resumen.botellasDejadasSemana)} · Ven: ${FormatoUtils.entero(resumen.botellasVendidasSemana)}',
                         dinero: FormatoUtils.moneda(resumen.totalSemana),
                       ),
                     ),
@@ -155,7 +172,8 @@ class ClienteCard extends StatelessWidget {
                     Expanded(
                       child: _DatoResumen(
                         etiqueta: 'Mes',
-                        jugos: '${FormatoUtils.entero(resumen.botellasMes)} jugos',
+                        jugos:
+                            'Dej: ${FormatoUtils.entero(resumen.botellasDejadasMes)} · Ven: ${FormatoUtils.entero(resumen.botellasVendidasMes)}',
                         dinero: FormatoUtils.moneda(resumen.totalMes),
                         destacar: true,
                         alinearDerecha: true,
@@ -164,30 +182,55 @@ class ClienteCard extends StatelessWidget {
                   ],
                 ),
               ),
-              const SizedBox(height: 8),
-              SizedBox(
-                width: double.infinity,
-                child: Wrap(
-                  spacing: 8,
-                  runSpacing: 6,
-                  alignment: WrapAlignment.end,
-                  children: [
-                    TextButton.icon(
-                      onPressed: onVerDetalle,
-                      icon: const Icon(Icons.calendar_view_week, size: 18),
-                      label: const Text('Historial'),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.deepOrange,
+                        side: BorderSide(color: Colors.orange.shade400),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 10,
+                        ),
+                      ),
+                      onPressed: onAbrirDejados,
+                      icon: const Icon(Icons.local_drink, size: 17),
+                      label: const FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(
+                          'Jugos dejados',
+                          maxLines: 1,
+                          style: TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                      ),
                     ),
-                    ElevatedButton.icon(
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: ElevatedButton.icon(
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.orange,
                         foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 10,
+                        ),
                       ),
-                      onPressed: onRegistrarEntrega,
-                      icon: const Icon(Icons.local_drink, size: 18),
-                      label: const Text('Dejar jugos'),
+                      onPressed: onAbrirVendidos,
+                      icon: const Icon(Icons.sell, size: 17),
+                      label: const FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(
+                          'Jugos vendidos',
+                          maxLines: 1,
+                          style: TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                      ),
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ],
           ),

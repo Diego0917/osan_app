@@ -1,3 +1,15 @@
+enum TipoEntrega {
+  dejado,
+  vendido;
+
+  String get valorDb => this == TipoEntrega.dejado ? 'dejado' : 'vendido';
+
+  static TipoEntrega fromDb(String? valor) {
+    if (valor == 'dejado') return TipoEntrega.dejado;
+    return TipoEntrega.vendido;
+  }
+}
+
 class Entrega {
   final int? id;
   final int clienteId;
@@ -5,15 +17,20 @@ class Entrega {
   final double precioUnitario;
   final double total;
   final String fecha; // Formato YYYY-MM-DD
+  final TipoEntrega tipo;
 
   Entrega({
     this.id,
     required this.clienteId,
     required this.cantidadBotellas,
-    required this.precioUnitario,
+    double precioUnitario = 0.0,
     double? total,
     required this.fecha,
-  }) : total = total ?? (cantidadBotellas * precioUnitario);
+    this.tipo = TipoEntrega.vendido,
+  }) : precioUnitario = tipo == TipoEntrega.dejado ? 0.0 : precioUnitario,
+       total = tipo == TipoEntrega.dejado
+           ? 0.0
+           : (total ?? (cantidadBotellas * precioUnitario));
 
   Map<String, dynamic> toMap() {
     return {
@@ -23,35 +40,44 @@ class Entrega {
       'precio_unitario': precioUnitario,
       'total': total,
       'fecha': fecha,
+      'tipo': tipo.valorDb,
     };
   }
 
   factory Entrega.fromMap(Map<String, dynamic> map) {
+    final tipo = TipoEntrega.fromDb(map['tipo'] as String?);
     return Entrega(
       id: map['id'] as int?,
       clienteId: map['cliente_id'] as int,
-      cantidadBotellas: map['cantidad_botellas'] as int,
-      precioUnitario: (map['precio_unitario'] as num).toDouble(),
-      total: (map['total'] as num).toDouble(),
+      cantidadBotellas: (map['cantidad_botellas'] as num).toInt(),
+      precioUnitario: (map['precio_unitario'] as num?)?.toDouble() ?? 0.0,
+      total: (map['total'] as num?)?.toDouble() ?? 0.0,
       fecha: map['fecha'] as String,
+      tipo: tipo,
     );
   }
 }
 
 class ResumenClienteSemana {
-  final int botellasHoy;
+  final int botellasDejadasHoy;
+  final int botellasDejadasSemana;
+  final int botellasDejadasMes;
+  final int botellasVendidasHoy;
   final double totalHoy;
-  final int botellasSemana;
+  final int botellasVendidasSemana;
   final double totalSemana;
-  final int botellasMes;
+  final int botellasVendidasMes;
   final double totalMes;
 
   const ResumenClienteSemana({
-    this.botellasHoy = 0,
+    this.botellasDejadasHoy = 0,
+    this.botellasDejadasSemana = 0,
+    this.botellasDejadasMes = 0,
+    this.botellasVendidasHoy = 0,
     this.totalHoy = 0.0,
-    this.botellasSemana = 0,
+    this.botellasVendidasSemana = 0,
     this.totalSemana = 0.0,
-    this.botellasMes = 0,
+    this.botellasVendidasMes = 0,
     this.totalMes = 0.0,
   });
 }
@@ -60,14 +86,16 @@ class ReporteClienteMes {
   final int clienteId;
   final String nombreCliente;
   final String telefono;
-  final int botellasMes;
+  final int botellasDejadasMes;
+  final int botellasVendidasMes;
   final double totalMes;
 
   const ReporteClienteMes({
     required this.clienteId,
     required this.nombreCliente,
     required this.telefono,
-    required this.botellasMes,
+    this.botellasDejadasMes = 0,
+    required this.botellasVendidasMes,
     required this.totalMes,
   });
 }

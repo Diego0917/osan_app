@@ -9,6 +9,23 @@ class DatabaseHelper {
   static final DatabaseHelper instance = DatabaseHelper._init();
   static Database? _database;
 
+  static const List<String> nombresProductosFijos = [
+    'Botellas',
+    'Jugos',
+    'Devoluciones',
+    'Botellas vendidas',
+    'Jugos salidos',
+  ];
+
+  static bool esProductoFijo(String nombre) {
+    final lower = nombre.trim().toLowerCase();
+    return nombresProductosFijos.any((n) => n.toLowerCase() == lower);
+  }
+
+  static bool esProductoHistorico(String nombre) {
+    return nombre.trim().toLowerCase() == 'jugos salidos';
+  }
+
   DatabaseHelper._init();
 
   Future<Database> get database async {
@@ -24,7 +41,7 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 4,
+      version: 5,
       onConfigure: (db) async {
         await db.execute('PRAGMA foreign_keys = ON');
       },
@@ -59,10 +76,7 @@ class DatabaseHelper {
 
     // Productos iniciales del inventario (incluyendo el ciclo completo de botellas)
     final productosIniciales = [
-      'Botellas',
-      'Jugos',
-      'Devoluciones',
-      'Botellas vendidas',
+      ...nombresProductosFijos,
       'Canastas de mandarina',
       'Bolsas',
       'Guantes',
@@ -81,7 +95,8 @@ class DatabaseHelper {
     if (oldVersion < 2) {
       await _crearTablaEntregas(db);
     }
-    if (oldVersion < 4) {
+    if (oldVersion < 5) {
+      await _migrarColumnaTipoEntregas(db);
       await _asegurarItemsCicloBotellas(db);
     }
   }
@@ -95,19 +110,24 @@ class DatabaseHelper {
         precio_unitario REAL NOT NULL,
         total REAL NOT NULL,
         fecha TEXT NOT NULL,
+        tipo TEXT NOT NULL DEFAULT 'vendido',
         FOREIGN KEY (cliente_id) REFERENCES clientes (id) ON DELETE CASCADE
       )
     ''');
   }
 
+  Future<void> _migrarColumnaTipoEntregas(Database db) async {
+    final columnas = await db.rawQuery('PRAGMA table_info(entregas)');
+    final tieneTipo = columnas.any((col) => col['name'] == 'tipo');
+    if (!tieneTipo) {
+      await db.execute(
+        "ALTER TABLE entregas ADD COLUMN tipo TEXT NOT NULL DEFAULT 'vendido'",
+      );
+    }
+  }
+
   Future<void> _asegurarItemsCicloBotellas(DatabaseExecutor db) async {
-    const itemsCiclo = [
-      'Botellas',
-      'Jugos',
-      'Devoluciones',
-      'Botellas vendidas',
-    ];
-    for (final nombre in itemsCiclo) {
+    for (final nombre in nombresProductosFijos) {
       final existente = await db.query(
         'productos',
         where: 'LOWER(nombre) = ?',
@@ -127,7 +147,7 @@ class DatabaseHelper {
   // CRUD PRODUCTOS (INVENTARIO) Y CICLO DE BOTELLAS
   // ==========================================
 
-  // Obtener todos los productos asegurando que existan Botellas, Jugos, Devoluciones y Botellas vendidas
+  // Obtener todos los productos asegurando que existan los ítems fijos del ciclo
   Future<List<Producto>> getProductos() async {
     final db = await instance.database;
     await _asegurarItemsCicloBotellas(db);
@@ -135,23 +155,29 @@ class DatabaseHelper {
     return result.map((json) => Producto.fromMap(json)).toList();
   }
 
-  // Insertar un nuevo producto
+  // Insertar un nuevo producto (evita duplicar los ítems fijos del sistema)
   Future<int> insertProducto(Producto producto) async {
+    if (esProductoFijo(producto.nombre)) {
+      return 0;
+    }
     final db = await instance.database;
     return await db.insert('productos', producto.toMap());
   }
 
-  // Actualizar un producto aplicando reglas del ciclo si es Jugos o Devoluciones
+  // Actualizar un producto protegiendo nombres fijos, contador histórico y reglas del ciclo
   Future<int> updateProducto(
     Producto producto, {
     int? cantidadAnterior,
   }) async {
     final db = await instance.database;
-    final nombreLower = producto.nombre.trim().toLowerCase();
 
     return await db.transaction((txn) async {
+      await _asegurarItemsCicloBotellas(txn);
+
       int prev = cantidadAnterior ?? producto.cantidad;
-      if (cantidadAnterior == null && producto.id != null) {
+      String nombreFinal = producto.nombre.trim();
+
+      if (producto.id != null) {
         final actualRows = await txn.query(
           'productos',
           where: 'id = ?',
@@ -159,18 +185,35 @@ class DatabaseHelper {
           limit: 1,
         );
         if (actualRows.isNotEmpty) {
-          prev = (actualRows.first['cantidad'] as num).toInt();
+          final nombreActual = (actualRows.first['nombre'] as String).trim();
+          final cantidadDb = (actualRows.first['cantidad'] as num).toInt();
+          if (cantidadAnterior == null) {
+            prev = cantidadDb;
+          }
+          // Los productos fijos nunca pueden cambiar de nombre
+          if (esProductoFijo(nombreActual)) {
+            nombreFinal = nombreActual;
+          }
+          // El contador histórico de Jugos salidos nunca puede reducirse ni reiniciarse
+          if (esProductoHistorico(nombreActual) &&
+              producto.cantidad < cantidadDb) {
+            return 0;
+          }
         }
       }
 
-      final delta = producto.cantidad - prev;
+      final nombreLower = nombreFinal.toLowerCase();
+      final nuevaCantidad = producto.cantidad < 0 ? 0 : producto.cantidad;
+      final delta = nuevaCantidad - prev;
 
       // Si aumentan los Jugos preparados (+delta):
       // - Se restan de Botellas disponibles (-delta)
       // - Salen como Botellas vendidas (+delta) hasta que regresen como devolución
+      // - Se acumulan permanentemente en Jugos salidos (+delta)
       if (nombreLower == 'jugos' && delta > 0) {
         await _ajustarPorNombreEnTxn(txn, 'botellas', -delta);
         await _ajustarPorNombreEnTxn(txn, 'botellas vendidas', delta);
+        await _ajustarPorNombreEnTxn(txn, 'jugos salidos', delta);
       }
       // Si se cargan nuevas Devoluciones (+delta):
       // - Se suman a Botellas disponibles para reutilizar (+delta)
@@ -182,7 +225,10 @@ class DatabaseHelper {
 
       return await txn.update(
         'productos',
-        producto.toMap(),
+        {
+          'nombre': nombreFinal,
+          'cantidad': nuevaCantidad,
+        },
         where: 'id = ?',
         whereArgs: [producto.id],
       );
@@ -216,6 +262,7 @@ class DatabaseHelper {
   /// - Resta `cantidad` de Botellas disponibles
   /// - Suma `cantidad` a Jugos del día
   /// - Suma `cantidad` a Botellas vendidas (las que regresen luego como devolución se restarán de vendidas)
+  /// - Suma `cantidad` al contador permanente Jugos salidos (nunca se reinicia)
   Future<void> producirJugos(int cantidad) async {
     if (cantidad <= 0) return;
     final db = await instance.database;
@@ -224,6 +271,7 @@ class DatabaseHelper {
       await _ajustarPorNombreEnTxn(txn, 'botellas', -cantidad);
       await _ajustarPorNombreEnTxn(txn, 'jugos', cantidad);
       await _ajustarPorNombreEnTxn(txn, 'botellas vendidas', cantidad);
+      await _ajustarPorNombreEnTxn(txn, 'jugos salidos', cantidad);
     });
   }
 
@@ -244,7 +292,7 @@ class DatabaseHelper {
 
   /// Cerrar Tarde (Poner en 0 Jugos y Devoluciones del día):
   /// Limpia los contadores diarios de Jugos y Devoluciones a 0 para evitar confusión
-  /// al día siguiente, conservando intactos Botellas disponibles y Botellas vendidas.
+  /// al día siguiente, conservando intactos Botellas, Botellas vendidas y Jugos salidos.
   Future<void> cerrarJornadaTarde() async {
     final db = await instance.database;
     await db.transaction((txn) async {
@@ -257,15 +305,17 @@ class DatabaseHelper {
     });
   }
 
-  /// Poner en 0 un producto específico por nombre (ej. 'jugos' o 'devoluciones')
-  /// sin afectar el stock de Botellas.
+  /// Poner en 0 únicamente los contadores diarios permitidos ('jugos' o 'devoluciones')
+  /// sin afectar Botellas, Botellas vendidas ni Jugos salidos.
   Future<void> ponerProductoEnCeroPorNombre(String nombre) async {
+    final lower = nombre.trim().toLowerCase();
+    if (lower != 'jugos' && lower != 'devoluciones') return;
     final db = await instance.database;
     await db.update(
       'productos',
       {'cantidad': 0},
       where: 'LOWER(nombre) = ?',
-      whereArgs: [nombre.trim().toLowerCase()],
+      whereArgs: [lower],
     );
   }
 
@@ -274,9 +324,22 @@ class DatabaseHelper {
     await ponerProductoEnCeroPorNombre('devoluciones');
   }
 
-  // Eliminar un producto
+  // Eliminar un producto (bloqueado para los ítems fijos del sistema)
   Future<int> deleteProducto(int id) async {
     final db = await instance.database;
+    final rows = await db.query(
+      'productos',
+      columns: ['nombre'],
+      where: 'id = ?',
+      whereArgs: [id],
+      limit: 1,
+    );
+    if (rows.isNotEmpty) {
+      final nombre = (rows.first['nombre'] ?? '') as String;
+      if (esProductoFijo(nombre)) {
+        return 0;
+      }
+    }
     return await db.delete(
       'productos',
       where: 'id = ?',
@@ -344,14 +407,16 @@ class DatabaseHelper {
   // CRUD ENTREGAS DIARIAS, SEMANALES Y MENSUALES
   // ==========================================
 
-  // Registrar una entrega de botellas a un cliente
+  // Registrar una entrega de botellas a un cliente (dejado o vendido)
   Future<int> insertEntrega(
     Entrega entrega, {
     bool descontarDeInventario = false,
   }) async {
     final db = await instance.database;
     final id = await db.insert('entregas', entrega.toMap());
-    if (descontarDeInventario && entrega.cantidadBotellas > 0) {
+    if (descontarDeInventario &&
+        entrega.tipo == TipoEntrega.dejado &&
+        entrega.cantidadBotellas > 0) {
       await descontarEnvasesPorEntrega(entrega.cantidadBotellas);
     }
     return id;
@@ -378,29 +443,36 @@ class DatabaseHelper {
     );
   }
 
-  // Obtener las entregas de un cliente dentro de un rango de fechas
+  // Obtener las entregas de un cliente dentro de un rango de fechas (opcionalmente filtradas por tipo)
   Future<List<Entrega>> getEntregasPorClienteYRango(
     int clienteId,
     String fechaInicio,
-    String fechaFin,
-  ) async {
+    String fechaFin, {
+    TipoEntrega? tipo,
+  }) async {
     final db = await instance.database;
+    final where = tipo == null
+        ? 'cliente_id = ? AND fecha >= ? AND fecha <= ?'
+        : 'cliente_id = ? AND fecha >= ? AND fecha <= ? AND tipo = ?';
+    final whereArgs = tipo == null
+        ? [clienteId, fechaInicio, fechaFin]
+        : [clienteId, fechaInicio, fechaFin, tipo.valorDb];
     final result = await db.query(
       'entregas',
-      where: 'cliente_id = ? AND fecha >= ? AND fecha <= ?',
-      whereArgs: [clienteId, fechaInicio, fechaFin],
+      where: where,
+      whereArgs: whereArgs,
       orderBy: 'fecha DESC, id DESC',
     );
     return result.map((json) => Entrega.fromMap(json)).toList();
   }
 
-  // Obtener el último precio registrado para sugerirlo automáticamente
+  // Obtener el último precio registrado en ventas para sugerirlo automáticamente
   Future<double?> getUltimoPrecioSugerido(int clienteId) async {
     final db = await instance.database;
     final delCliente = await db.query(
       'entregas',
       columns: ['precio_unitario'],
-      where: 'cliente_id = ?',
+      where: "cliente_id = ? AND tipo = 'vendido' AND precio_unitario > 0",
       whereArgs: [clienteId],
       orderBy: 'id DESC',
       limit: 1,
@@ -411,6 +483,7 @@ class DatabaseHelper {
     final general = await db.query(
       'entregas',
       columns: ['precio_unitario'],
+      where: "tipo = 'vendido' AND precio_unitario > 0",
       orderBy: 'id DESC',
       limit: 1,
     );
@@ -420,7 +493,7 @@ class DatabaseHelper {
     return null;
   }
 
-  // Resumen completo (Hoy, Semana y Mes) para todos los clientes
+  // Resumen completo (Hoy, Semana y Mes) para todos los clientes separando dejados y vendidos
   Future<Map<int, ResumenClienteSemana>> getResumenesSemanales({
     required String fechaInicio,
     required String fechaFin,
@@ -445,17 +518,25 @@ class DatabaseHelper {
       '''
       SELECT
         cliente_id,
-        COALESCE(SUM(CASE WHEN fecha = ? THEN cantidad_botellas ELSE 0 END), 0) AS botellas_hoy,
-        COALESCE(SUM(CASE WHEN fecha = ? THEN total ELSE 0.0 END), 0.0) AS total_hoy,
-        COALESCE(SUM(CASE WHEN fecha >= ? AND fecha <= ? THEN cantidad_botellas ELSE 0 END), 0) AS botellas_semana,
-        COALESCE(SUM(CASE WHEN fecha >= ? AND fecha <= ? THEN total ELSE 0.0 END), 0.0) AS total_semana,
-        COALESCE(SUM(CASE WHEN fecha >= ? AND fecha <= ? THEN cantidad_botellas ELSE 0 END), 0) AS botellas_mes,
-        COALESCE(SUM(CASE WHEN fecha >= ? AND fecha <= ? THEN total ELSE 0.0 END), 0.0) AS total_mes
+        COALESCE(SUM(CASE WHEN tipo = 'dejado' AND fecha = ? THEN cantidad_botellas ELSE 0 END), 0) AS dejados_hoy,
+        COALESCE(SUM(CASE WHEN tipo = 'dejado' AND fecha >= ? AND fecha <= ? THEN cantidad_botellas ELSE 0 END), 0) AS dejados_semana,
+        COALESCE(SUM(CASE WHEN tipo = 'dejado' AND fecha >= ? AND fecha <= ? THEN cantidad_botellas ELSE 0 END), 0) AS dejados_mes,
+        COALESCE(SUM(CASE WHEN tipo = 'vendido' AND fecha = ? THEN cantidad_botellas ELSE 0 END), 0) AS vendidos_hoy,
+        COALESCE(SUM(CASE WHEN tipo = 'vendido' AND fecha = ? THEN total ELSE 0.0 END), 0.0) AS total_hoy,
+        COALESCE(SUM(CASE WHEN tipo = 'vendido' AND fecha >= ? AND fecha <= ? THEN cantidad_botellas ELSE 0 END), 0) AS vendidos_semana,
+        COALESCE(SUM(CASE WHEN tipo = 'vendido' AND fecha >= ? AND fecha <= ? THEN total ELSE 0.0 END), 0.0) AS total_semana,
+        COALESCE(SUM(CASE WHEN tipo = 'vendido' AND fecha >= ? AND fecha <= ? THEN cantidad_botellas ELSE 0 END), 0) AS vendidos_mes,
+        COALESCE(SUM(CASE WHEN tipo = 'vendido' AND fecha >= ? AND fecha <= ? THEN total ELSE 0.0 END), 0.0) AS total_mes
       FROM entregas
       WHERE fecha >= ? AND fecha <= ?
       GROUP BY cliente_id
       ''',
       [
+        fechaHoy,
+        fechaInicio,
+        fechaFin,
+        inicioMes,
+        finMes,
         fechaHoy,
         fechaHoy,
         fechaInicio,
@@ -475,18 +556,21 @@ class DatabaseHelper {
     for (final row in rows) {
       final clienteId = row['cliente_id'] as int;
       mapa[clienteId] = ResumenClienteSemana(
-        botellasHoy: (row['botellas_hoy'] as num).toInt(),
+        botellasDejadasHoy: (row['dejados_hoy'] as num).toInt(),
+        botellasDejadasSemana: (row['dejados_semana'] as num).toInt(),
+        botellasDejadasMes: (row['dejados_mes'] as num).toInt(),
+        botellasVendidasHoy: (row['vendidos_hoy'] as num).toInt(),
         totalHoy: (row['total_hoy'] as num).toDouble(),
-        botellasSemana: (row['botellas_semana'] as num).toInt(),
+        botellasVendidasSemana: (row['vendidos_semana'] as num).toInt(),
         totalSemana: (row['total_semana'] as num).toDouble(),
-        botellasMes: (row['botellas_mes'] as num).toInt(),
+        botellasVendidasMes: (row['vendidos_mes'] as num).toInt(),
         totalMes: (row['total_mes'] as num).toDouble(),
       );
     }
     return mapa;
   }
 
-  // Obtener reporte mensual desglosado por cada cliente
+  // Obtener reporte mensual desglosado por cada cliente (ingresos calculados con jugos vendidos)
   Future<List<ReporteClienteMes>> getReporteMensualPorClientes(
     String inicioMes,
     String finMes,
@@ -498,8 +582,9 @@ class DatabaseHelper {
         c.id AS cliente_id,
         c.nombre AS nombre,
         COALESCE(c.telefono, '') AS telefono,
-        COALESCE(SUM(e.cantidad_botellas), 0) AS botellas_mes,
-        COALESCE(SUM(e.total), 0.0) AS total_mes
+        COALESCE(SUM(CASE WHEN e.tipo = 'dejado' THEN e.cantidad_botellas ELSE 0 END), 0) AS dejados_mes,
+        COALESCE(SUM(CASE WHEN e.tipo = 'vendido' THEN e.cantidad_botellas ELSE 0 END), 0) AS vendidos_mes,
+        COALESCE(SUM(CASE WHEN e.tipo = 'vendido' THEN e.total ELSE 0.0 END), 0.0) AS total_mes
       FROM clientes c
       LEFT JOIN entregas e
         ON e.cliente_id = c.id
@@ -517,7 +602,8 @@ class DatabaseHelper {
             clienteId: row['cliente_id'] as int,
             nombreCliente: (row['nombre'] ?? '') as String,
             telefono: (row['telefono'] ?? '') as String,
-            botellasMes: (row['botellas_mes'] as num).toInt(),
+            botellasDejadasMes: (row['dejados_mes'] as num).toInt(),
+            botellasVendidasMes: (row['vendidos_mes'] as num).toInt(),
             totalMes: (row['total_mes'] as num).toDouble(),
           ),
         )
