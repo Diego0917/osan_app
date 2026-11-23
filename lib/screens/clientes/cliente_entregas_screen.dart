@@ -38,8 +38,6 @@ Future<bool> mostrarModalEntrega(
   DateTime fechaSeleccionada = entregaExistente != null
       ? FechaSemanaUtils.desdeIso(entregaExistente.fecha)
       : DateTime.now();
-  // Activado por defecto al dejar jugos; el usuario solo lo toca si desea desactivarlo
-  bool descontarInventario = true;
   String? errorValidacion;
 
   double calcularSubtotal() {
@@ -181,29 +179,6 @@ Future<bool> mostrarModalEntrega(
                       ),
                     ),
                   ],
-                  if (esDejado && !esEdicion) ...[
-                    const SizedBox(height: 6),
-                    SwitchListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text(
-                        'Descontar del contador de "Jugos del día"',
-                        style: TextStyle(fontSize: 14),
-                      ),
-                      subtitle: Text(
-                        'Activado automáticamente. Desactívalo solo si no quieres descontar del inventario.',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.grey.shade700,
-                        ),
-                      ),
-                      value: descontarInventario,
-                      onChanged: (valor) {
-                        setModalState(() {
-                          descontarInventario = valor;
-                        });
-                      },
-                    ),
-                  ],
                   if (errorValidacion != null) ...[
                     const SizedBox(height: 8),
                     Text(
@@ -257,11 +232,7 @@ Future<bool> mostrarModalEntrega(
                       if (esEdicion) {
                         await DatabaseHelper.instance.updateEntrega(entrega);
                       } else {
-                        await DatabaseHelper.instance.insertEntrega(
-                          entrega,
-                          descontarDeInventario:
-                              esDejado && descontarInventario,
-                        );
+                        await DatabaseHelper.instance.insertEntrega(entrega);
                       }
 
                       if (!ctx.mounted) return;

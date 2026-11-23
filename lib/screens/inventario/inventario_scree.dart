@@ -52,7 +52,7 @@ class _InventarioScreenState extends State<InventarioScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text(
-          'Tarde cerrada: Jugos y Devoluciones puestos en 0 (Botellas, Vendidas y Jugos salidos se mantienen).',
+          'Tarde cerrada: Jugos y Devoluciones puestos en 0 (Botellas, Jugos vendidos y Jugos salidos se mantienen).',
         ),
       ),
     );
@@ -68,7 +68,6 @@ class _InventarioScreenState extends State<InventarioScreen> {
   void _mostrarModalHacerJugos({
     required int stockBotellas,
     required int stockJugos,
-    required int stockVendidas,
     required int stockJugosSalidos,
   }) {
     final controllerCantidad = TextEditingController();
@@ -86,7 +85,6 @@ class _InventarioScreenState extends State<InventarioScreen> {
             final nuevasBotellas =
                 (stockBotellas - cantValida) < 0 ? 0 : (stockBotellas - cantValida);
             final nuevosJugos = stockJugos + cantValida;
-            final nuevasVendidas = stockVendidas + cantValida;
             final nuevosJugosSalidos = stockJugosSalidos + cantValida;
 
             return Padding(
@@ -107,7 +105,7 @@ class _InventarioScreenState extends State<InventarioScreen> {
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      'Se restarán de tus Botellas disponibles, saldrán a venta y se acumularán en Jugos salidos (histórico permanente).',
+                      'Se restarán de tus Botellas disponibles y se acumularán en Jugos salidos (histórico permanente).',
                       style: TextStyle(fontSize: 13, color: Colors.grey.shade700),
                     ),
                     const SizedBox(height: 14),
@@ -171,28 +169,6 @@ class _InventarioScreenState extends State<InventarioScreen> {
                                     fontWeight: FontWeight.bold,
                                     fontSize: 14,
                                     color: Colors.green.shade800,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 6),
-                          Row(
-                            children: [
-                              const Expanded(
-                                child: Text(
-                                  'Botellas vendidas (en calle):',
-                                  style: TextStyle(fontSize: 13),
-                                ),
-                              ),
-                              FittedBox(
-                                fit: BoxFit.scaleDown,
-                                child: Text(
-                                  '${FormatoUtils.entero(stockVendidas)} → ${FormatoUtils.entero(nuevasVendidas)}',
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 14,
-                                    color: Colors.deepOrange,
                                   ),
                                 ),
                               ),
@@ -290,7 +266,6 @@ class _InventarioScreenState extends State<InventarioScreen> {
   void _mostrarModalCargarDevoluciones({
     required int stockBotellas,
     required int stockDevoluciones,
-    required int stockVendidas,
   }) {
     final controllerCantidad = TextEditingController();
     String? mensajeError;
@@ -305,8 +280,6 @@ class _InventarioScreenState extends State<InventarioScreen> {
             final cant = int.tryParse(controllerCantidad.text.trim()) ?? 0;
             final cantValida = cant > 0 ? cant : 0;
             final nuevasBotellas = stockBotellas + cantValida;
-            final nuevasVendidas =
-                (stockVendidas - cantValida) < 0 ? 0 : (stockVendidas - cantValida);
 
             return Padding(
               padding: EdgeInsets.only(
@@ -326,7 +299,7 @@ class _InventarioScreenState extends State<InventarioScreen> {
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      'Las botellas devueltas se suman a tus Botellas disponibles para reutilizarse, y las que no regresaron quedan en Botellas vendidas.',
+                      'Las botellas devueltas se suman automáticamente a tus Botellas disponibles para reutilizarse.',
                       style: TextStyle(fontSize: 13, color: Colors.grey.shade700),
                     ),
                     const SizedBox(height: 14),
@@ -351,50 +324,24 @@ class _InventarioScreenState extends State<InventarioScreen> {
                         borderRadius: BorderRadius.circular(8),
                         border: Border.all(color: Colors.green.shade200),
                       ),
-                      child: Column(
+                      child: Row(
                         children: [
-                          Row(
-                            children: [
-                              const Expanded(
-                                child: Text(
-                                  'Botellas disponibles (se suman):',
-                                  style: TextStyle(fontSize: 13),
-                                ),
-                              ),
-                              FittedBox(
-                                fit: BoxFit.scaleDown,
-                                child: Text(
-                                  '${FormatoUtils.entero(stockBotellas)} → ${FormatoUtils.entero(nuevasBotellas)}',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 15,
-                                    color: Colors.green.shade800,
-                                  ),
-                                ),
-                              ),
-                            ],
+                          const Expanded(
+                            child: Text(
+                              'Botellas disponibles (se suman):',
+                              style: TextStyle(fontSize: 13),
+                            ),
                           ),
-                          const SizedBox(height: 6),
-                          Row(
-                            children: [
-                              const Expanded(
-                                child: Text(
-                                  'Botellas vendidas (no regresaron):',
-                                  style: TextStyle(fontSize: 13),
-                                ),
+                          FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(
+                              '${FormatoUtils.entero(stockBotellas)} → ${FormatoUtils.entero(nuevasBotellas)}',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 15,
+                                color: Colors.green.shade800,
                               ),
-                              FittedBox(
-                                fit: BoxFit.scaleDown,
-                                child: Text(
-                                  '${FormatoUtils.entero(stockVendidas)} → ${FormatoUtils.entero(nuevasVendidas)}',
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 15,
-                                    color: Colors.deepOrange,
-                                  ),
-                                ),
-                              ),
-                            ],
+                            ),
                           ),
                         ],
                       ),
@@ -633,7 +580,7 @@ class _InventarioScreenState extends State<InventarioScreen> {
     if (lower == 'botellas') return 0;
     if (lower == 'jugos') return 1;
     if (lower == 'devoluciones') return 2;
-    if (lower == 'botellas vendidas') return 3;
+    if (lower == 'jugos vendidos') return 3;
     if (lower == 'jugos salidos') return 4;
     return 5;
   }
@@ -679,7 +626,7 @@ class _InventarioScreenState extends State<InventarioScreen> {
             if (lower == 'botellas') stockBotellas = p.cantidad;
             if (lower == 'jugos') stockJugos = p.cantidad;
             if (lower == 'devoluciones') stockDevoluciones = p.cantidad;
-            if (lower == 'botellas vendidas') stockVendidas = p.cantidad;
+            if (lower == 'jugos vendidos') stockVendidas = p.cantidad;
             if (lower == 'jugos salidos') stockJugosSalidos = p.cantidad;
           }
 
@@ -697,13 +644,11 @@ class _InventarioScreenState extends State<InventarioScreen> {
                   onHacerJugos: () => _mostrarModalHacerJugos(
                     stockBotellas: stockBotellas,
                     stockJugos: stockJugos,
-                    stockVendidas: stockVendidas,
                     stockJugosSalidos: stockJugosSalidos,
                   ),
                   onCargarDevoluciones: () => _mostrarModalCargarDevoluciones(
                     stockBotellas: stockBotellas,
                     stockDevoluciones: stockDevoluciones,
-                    stockVendidas: stockVendidas,
                   ),
                   onCerrarTarde: _cerrarJornadaTarde,
                 );
@@ -796,8 +741,8 @@ class _PanelCicloBotellas extends StatelessWidget {
               const SizedBox(width: 8),
               Expanded(
                 child: _CajaMetricaEnvase(
-                  titulo: 'Botellas Vendidas',
-                  subtitulo: 'No regresaron',
+                  titulo: 'Jugos Vendidos',
+                  subtitulo: 'Registrados a clientes',
                   cantidad: stockVendidas,
                 ),
               ),

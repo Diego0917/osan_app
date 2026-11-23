@@ -166,18 +166,113 @@ class ClienteCard extends StatelessWidget {
                         jugos:
                             'Dej: ${FormatoUtils.entero(resumen.botellasDejadasSemana)} · Ven: ${FormatoUtils.entero(resumen.botellasVendidasSemana)}',
                         dinero: FormatoUtils.moneda(resumen.totalSemana),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: _DatoResumen(
-                        etiqueta: 'Mes',
-                        jugos:
-                            'Dej: ${FormatoUtils.entero(resumen.botellasDejadasMes)} · Ven: ${FormatoUtils.entero(resumen.botellasVendidasMes)}',
-                        dinero: FormatoUtils.moneda(resumen.totalMes),
-                        destacar: true,
                         alinearDerecha: true,
                       ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                decoration: BoxDecoration(
+                  color: Colors.green.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.green.shade200),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.calendar_month,
+                          size: 16,
+                          color: Colors.green.shade800,
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            'Conteo Mensual (${FechaSemanaUtils.meses[DateTime.now().month - 1]})',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.green.shade900,
+                            ),
+                          ),
+                        ),
+                        Text(
+                          'Dejados: ${FormatoUtils.entero(resumen.botellasDejadasMes)}',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.grey.shade700,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Jugos vendidos en el mes',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: Colors.grey.shade700,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              FittedBox(
+                                fit: BoxFit.scaleDown,
+                                alignment: Alignment.centerLeft,
+                                child: Text(
+                                  '${FormatoUtils.entero(resumen.botellasVendidasMes)} jugos',
+                                  maxLines: 1,
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.black87,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Text(
+                                'Dinero hecho en el mes',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: Colors.grey.shade700,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              FittedBox(
+                                fit: BoxFit.scaleDown,
+                                alignment: Alignment.centerRight,
+                                child: Text(
+                                  FormatoUtils.moneda(resumen.totalMes),
+                                  maxLines: 1,
+                                  style: TextStyle(
+                                    fontSize: 17,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.green.shade800,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -244,14 +339,12 @@ class _DatoResumen extends StatelessWidget {
   final String etiqueta;
   final String jugos;
   final String dinero;
-  final bool destacar;
   final bool alinearDerecha;
 
   const _DatoResumen({
     required this.etiqueta,
     required this.jugos,
     required this.dinero,
-    this.destacar = false,
     this.alinearDerecha = false,
   });
 
@@ -294,10 +387,10 @@ class _DatoResumen extends StatelessWidget {
           child: Text(
             dinero,
             maxLines: 1,
-            style: TextStyle(
+            style: const TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.bold,
-              color: destacar ? Colors.green.shade800 : Colors.deepOrange,
+              color: Colors.deepOrange,
             ),
           ),
         ),
