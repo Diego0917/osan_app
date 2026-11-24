@@ -13,11 +13,19 @@ class InventarioScreen extends StatefulWidget {
 
 class _InventarioScreenState extends State<InventarioScreen> {
   late Future<List<Producto>> _productosFuture;
+  final TextEditingController _busquedaController = TextEditingController();
+  String _textoBusqueda = '';
 
   @override
   void initState() {
     super.initState();
     _refreshInventario();
+  }
+
+  @override
+  void dispose() {
+    _busquedaController.dispose();
+    super.dispose();
   }
 
   void _refreshInventario() {
@@ -52,7 +60,7 @@ class _InventarioScreenState extends State<InventarioScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text(
-          'Tarde cerrada: Jugos y Devoluciones puestos en 0 (Botellas, Jugos vendidos y Jugos salidos se mantienen).',
+          'Tarde cerrada: Jugos y Devoluciones puestos en 0 (Botellas, Jugos vendidos y Jugos despachados se mantienen).',
         ),
       ),
     );
@@ -68,7 +76,6 @@ class _InventarioScreenState extends State<InventarioScreen> {
   void _mostrarModalHacerJugos({
     required int stockBotellas,
     required int stockJugos,
-    required int stockJugosSalidos,
   }) {
     final controllerCantidad = TextEditingController();
     String? mensajeError;
@@ -85,7 +92,6 @@ class _InventarioScreenState extends State<InventarioScreen> {
             final nuevasBotellas =
                 (stockBotellas - cantValida) < 0 ? 0 : (stockBotellas - cantValida);
             final nuevosJugos = stockJugos + cantValida;
-            final nuevosJugosSalidos = stockJugosSalidos + cantValida;
 
             return Padding(
               padding: EdgeInsets.only(
@@ -105,7 +111,7 @@ class _InventarioScreenState extends State<InventarioScreen> {
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      'Se restarán de tus Botellas disponibles y se acumularán en Jugos salidos (histórico permanente).',
+                      'Se restarán automáticamente de tus Botellas disponibles.',
                       style: TextStyle(fontSize: 13, color: Colors.grey.shade700),
                     ),
                     const SizedBox(height: 14),
@@ -169,28 +175,6 @@ class _InventarioScreenState extends State<InventarioScreen> {
                                     fontWeight: FontWeight.bold,
                                     fontSize: 14,
                                     color: Colors.green.shade800,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 6),
-                          Row(
-                            children: [
-                              const Expanded(
-                                child: Text(
-                                  'Jugos salidos (histórico):',
-                                  style: TextStyle(fontSize: 13),
-                                ),
-                              ),
-                              FittedBox(
-                                fit: BoxFit.scaleDown,
-                                child: Text(
-                                  '${FormatoUtils.entero(stockJugosSalidos)} → ${FormatoUtils.entero(nuevosJugosSalidos)}',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 14,
-                                    color: Colors.blue.shade800,
                                   ),
                                 ),
                               ),
@@ -581,13 +565,15 @@ class _InventarioScreenState extends State<InventarioScreen> {
     if (lower == 'jugos') return 1;
     if (lower == 'devoluciones') return 2;
     if (lower == 'jugos vendidos') return 3;
-    if (lower == 'jugos salidos') return 4;
+    if (lower == 'jugos despachados') return 4;
     return 5;
   }
 
   bool _permitePonerEnCeroRapido(Producto p) {
     final lower = p.nombre.trim().toLowerCase();
-    return lower == 'jugos' || lower == 'devoluciones';
+    return lower == 'jugos' ||
+        lower == 'devoluciones' ||
+        lower == 'jugos despachados';
   }
 
   @override
@@ -598,83 +584,165 @@ class _InventarioScreenState extends State<InventarioScreen> {
         backgroundColor: Colors.orange,
         foregroundColor: Colors.white,
       ),
-      body: FutureBuilder<List<Producto>>(
-        future: _productosFuture,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          if (!snapshot.hasData || snapshot.data!.isEmpty) {
-            return const Center(child: Text('No hay productos registrados.'));
-          }
-
-          final productos = List<Producto>.from(snapshot.data!);
-          productos.sort((a, b) {
-            final pa = _prioridadOrden(a);
-            final pb = _prioridadOrden(b);
-            if (pa != pb) return pa.compareTo(pb);
-            return a.nombre.compareTo(b.nombre);
-          });
-
-          int stockBotellas = 0;
-          int stockJugos = 0;
-          int stockDevoluciones = 0;
-          int stockVendidas = 0;
-          int stockJugosSalidos = 0;
-          for (final p in productos) {
-            final lower = p.nombre.trim().toLowerCase();
-            if (lower == 'botellas') stockBotellas = p.cantidad;
-            if (lower == 'jugos') stockJugos = p.cantidad;
-            if (lower == 'devoluciones') stockDevoluciones = p.cantidad;
-            if (lower == 'jugos vendidos') stockVendidas = p.cantidad;
-            if (lower == 'jugos salidos') stockJugosSalidos = p.cantidad;
-          }
-
-          return ListView.builder(
-            padding: const EdgeInsets.only(top: 8, bottom: 80),
-            itemCount: productos.length + 1,
-            itemBuilder: (context, index) {
-              if (index == 0) {
-                return _PanelCicloBotellas(
-                  stockBotellas: stockBotellas,
-                  stockJugos: stockJugos,
-                  stockDevoluciones: stockDevoluciones,
-                  stockVendidas: stockVendidas,
-                  stockJugosSalidos: stockJugosSalidos,
-                  onHacerJugos: () => _mostrarModalHacerJugos(
-                    stockBotellas: stockBotellas,
-                    stockJugos: stockJugos,
-                    stockJugosSalidos: stockJugosSalidos,
-                  ),
-                  onCargarDevoluciones: () => _mostrarModalCargarDevoluciones(
-                    stockBotellas: stockBotellas,
-                    stockDevoluciones: stockDevoluciones,
-                  ),
-                  onCerrarTarde: _cerrarJornadaTarde,
-                );
-              }
-
-              final item = productos[index - 1];
-              final esFijo = DatabaseHelper.esProductoFijo(item.nombre);
-              final esSoloLectura =
-                  DatabaseHelper.esProductoHistorico(item.nombre);
-
-              return ProductoCard(
-                producto: item,
-                esFijo: esFijo,
-                esSoloLectura: esSoloLectura,
-                onDecrementar: () => _modificarCantidad(item, -1),
-                onIncrementar: () => _modificarCantidad(item, 1),
-                onEditar: () =>
-                    _mostrarModalFormularioProducto(productoExistente: item),
-                onEliminar: () => _confirmarEliminarProducto(item),
-                onPonerEnCero: _permitePonerEnCeroRapido(item)
-                    ? () => _ponerEnCeroIndividual(item)
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+            child: TextField(
+              controller: _busquedaController,
+              onChanged: (valor) {
+                setState(() {
+                  _textoBusqueda = valor.trim();
+                });
+              },
+              decoration: InputDecoration(
+                hintText: 'Buscar producto o insumo en inventario...',
+                prefixIcon: const Icon(Icons.search, color: Colors.orange),
+                suffixIcon: _textoBusqueda.isNotEmpty
+                    ? IconButton(
+                        tooltip: 'Limpiar búsqueda',
+                        icon: const Icon(Icons.clear),
+                        onPressed: () {
+                          _busquedaController.clear();
+                          setState(() {
+                            _textoBusqueda = '';
+                          });
+                        },
+                      )
                     : null,
-              );
-            },
-          );
-        },
+                filled: true,
+                fillColor: Colors.orange.shade50,
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 10,
+                ),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: Colors.orange.shade200),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: Colors.orange.shade200),
+                ),
+              ),
+            ),
+          ),
+          Expanded(
+            child: FutureBuilder<List<Producto>>(
+              future: _productosFuture,
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                  return const Center(
+                    child: Text('No hay productos registrados.'),
+                  );
+                }
+
+                final productos = List<Producto>.from(snapshot.data!);
+                productos.sort((a, b) {
+                  final pa = _prioridadOrden(a);
+                  final pb = _prioridadOrden(b);
+                  if (pa != pb) return pa.compareTo(pb);
+                  return a.nombre.compareTo(b.nombre);
+                });
+
+                int stockBotellas = 0;
+                int stockJugos = 0;
+                int stockDevoluciones = 0;
+                int stockVendidas = 0;
+                int stockJugosDespachados = 0;
+                Producto? productoDespachados;
+                for (final p in productos) {
+                  final lower = p.nombre.trim().toLowerCase();
+                  if (lower == 'botellas') stockBotellas = p.cantidad;
+                  if (lower == 'jugos') stockJugos = p.cantidad;
+                  if (lower == 'devoluciones') stockDevoluciones = p.cantidad;
+                  if (lower == 'jugos vendidos') stockVendidas = p.cantidad;
+                  if (lower == 'jugos despachados') {
+                    stockJugosDespachados = p.cantidad;
+                    productoDespachados = p;
+                  }
+                }
+
+                final query = _textoBusqueda.toLowerCase();
+                final productosFiltrados = query.isEmpty
+                    ? productos
+                    : productos
+                        .where((p) => p.nombre.toLowerCase().contains(query))
+                        .toList();
+
+                final mostrarPanelSuperior = query.isEmpty;
+
+                if (!mostrarPanelSuperior && productosFiltrados.isEmpty) {
+                  return Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Text(
+                        'No se encontraron productos para "$_textoBusqueda".',
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  );
+                }
+
+                return ListView.builder(
+                  padding: const EdgeInsets.only(top: 6, bottom: 80),
+                  itemCount: productosFiltrados.length +
+                      (mostrarPanelSuperior ? 1 : 0),
+                  itemBuilder: (context, index) {
+                    if (mostrarPanelSuperior && index == 0) {
+                      return _PanelCicloBotellas(
+                        stockBotellas: stockBotellas,
+                        stockJugos: stockJugos,
+                        stockDevoluciones: stockDevoluciones,
+                        stockVendidas: stockVendidas,
+                        stockJugosDespachados: stockJugosDespachados,
+                        onHacerJugos: () => _mostrarModalHacerJugos(
+                          stockBotellas: stockBotellas,
+                          stockJugos: stockJugos,
+                        ),
+                        onCargarDevoluciones: () =>
+                            _mostrarModalCargarDevoluciones(
+                          stockBotellas: stockBotellas,
+                          stockDevoluciones: stockDevoluciones,
+                        ),
+                        onCerrarTarde: _cerrarJornadaTarde,
+                        onEditarDespachados: productoDespachados != null
+                            ? () => _mostrarModalFormularioProducto(
+                                  productoExistente: productoDespachados,
+                                )
+                            : null,
+                      );
+                    }
+
+                    final item = productosFiltrados[
+                        mostrarPanelSuperior ? (index - 1) : index];
+                    final esFijo = DatabaseHelper.esProductoFijo(item.nombre);
+                    final esSoloLectura =
+                        DatabaseHelper.esProductoHistorico(item.nombre);
+
+                    return ProductoCard(
+                      producto: item,
+                      esFijo: esFijo,
+                      esSoloLectura: esSoloLectura,
+                      onDecrementar: () => _modificarCantidad(item, -1),
+                      onIncrementar: () => _modificarCantidad(item, 1),
+                      onEditar: () => _mostrarModalFormularioProducto(
+                        productoExistente: item,
+                      ),
+                      onEliminar: () => _confirmarEliminarProducto(item),
+                      onPonerEnCero: _permitePonerEnCeroRapido(item)
+                          ? () => _ponerEnCeroIndividual(item)
+                          : null,
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+        ],
       ),
       floatingActionButton: FloatingActionButton(
         backgroundColor: Colors.orange,
@@ -690,20 +758,22 @@ class _PanelCicloBotellas extends StatelessWidget {
   final int stockJugos;
   final int stockDevoluciones;
   final int stockVendidas;
-  final int stockJugosSalidos;
+  final int stockJugosDespachados;
   final VoidCallback onHacerJugos;
   final VoidCallback onCargarDevoluciones;
   final VoidCallback onCerrarTarde;
+  final VoidCallback? onEditarDespachados;
 
   const _PanelCicloBotellas({
     required this.stockBotellas,
     required this.stockJugos,
     required this.stockDevoluciones,
     required this.stockVendidas,
-    required this.stockJugosSalidos,
+    required this.stockJugosDespachados,
     required this.onHacerJugos,
     required this.onCargarDevoluciones,
     required this.onCerrarTarde,
+    this.onEditarDespachados,
   });
 
   @override
@@ -769,59 +839,69 @@ class _PanelCicloBotellas extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 8),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.24),
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(
-                color: Colors.white.withValues(alpha: 0.35),
+          InkWell(
+            onTap: onEditarDespachados,
+            borderRadius: BorderRadius.circular(8),
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.24),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: 0.35),
+                ),
               ),
-            ),
-            child: Row(
-              children: [
-                const Icon(
-                  Icons.trending_up,
-                  color: Colors.white,
-                  size: 22,
-                ),
-                const SizedBox(width: 10),
-                const Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Jugos Salidos (Histórico)',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 13,
-                        ),
-                      ),
-                      Text(
-                        'Acumulado permanente • nunca se reinicia',
-                        style: TextStyle(
-                          color: Colors.white70,
-                          fontSize: 11,
-                        ),
-                      ),
-                    ],
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.local_shipping,
+                    color: Colors.white,
+                    size: 22,
                   ),
-                ),
-                const SizedBox(width: 8),
-                FittedBox(
-                  fit: BoxFit.scaleDown,
-                  child: Text(
-                    FormatoUtils.entero(stockJugosSalidos),
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 22,
+                  const SizedBox(width: 10),
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Jugos Despachados',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13,
+                          ),
+                        ),
+                        Text(
+                          'Jugos dejados a los clientes (toca para editar)',
+                          style: TextStyle(
+                            color: Colors.white70,
+                            fontSize: 11,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                ),
-              ],
+                  const SizedBox(width: 8),
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      FormatoUtils.entero(stockJugosDespachados),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 22,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  const Icon(
+                    Icons.edit,
+                    color: Colors.white70,
+                    size: 16,
+                  ),
+                ],
+              ),
             ),
           ),
           const SizedBox(height: 12),

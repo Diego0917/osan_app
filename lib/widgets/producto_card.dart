@@ -34,8 +34,8 @@ class ProductoCard extends StatelessWidget {
       return 'Recogidas en la mañana (suma a Botellas • poner en 0 en la tarde)';
     } else if (lower == 'jugos vendidos') {
       return 'Se suman automáticamente al registrar jugos vendidos a clientes';
-    } else if (lower == 'jugos salidos') {
-      return 'Acumulado histórico permanente (nunca se reinicia)';
+    } else if (lower == 'jugos despachados') {
+      return 'Jugos dejados a los clientes (se suman al cargar jugos dejados)';
     }
     return null;
   }
@@ -46,7 +46,7 @@ class ProductoCard extends StatelessWidget {
     if (lower == 'jugos') return Icons.local_drink;
     if (lower == 'devoluciones') return Icons.autorenew;
     if (lower == 'jugos vendidos') return Icons.sell;
-    if (lower == 'jugos salidos') return Icons.trending_up;
+    if (lower == 'jugos despachados') return Icons.local_shipping;
     return Icons.inventory_2;
   }
 

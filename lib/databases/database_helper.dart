@@ -14,7 +14,7 @@ class DatabaseHelper {
     'Jugos',
     'Devoluciones',
     'Jugos vendidos',
-    'Jugos salidos',
+    'Jugos despachados',
   ];
 
   static bool esProductoFijo(String nombre) {
@@ -23,7 +23,7 @@ class DatabaseHelper {
   }
 
   static bool esProductoHistorico(String nombre) {
-    return nombre.trim().toLowerCase() == 'jugos salidos';
+    return false;
   }
 
   DatabaseHelper._init();
@@ -41,7 +41,7 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 6,
+      version: 7,
       onConfigure: (db) async {
         await db.execute('PRAGMA foreign_keys = ON');
       },
@@ -98,7 +98,7 @@ class DatabaseHelper {
     if (oldVersion < 5) {
       await _migrarColumnaTipoEntregas(db);
     }
-    if (oldVersion < 6) {
+    if (oldVersion < 7) {
       await _asegurarItemsCicloBotellas(db);
     }
   }
@@ -162,6 +162,43 @@ class DatabaseHelper {
           'productos',
           where: 'id = ?',
           whereArgs: [antiguo.first['id']],
+        );
+      }
+    }
+
+    // Si existía 'Jugos salidos', renombrarlo a 'Jugos despachados' y sincronizar con los jugos dejados a clientes
+    final antiguoSalidos = await db.query(
+      'productos',
+      where: 'LOWER(nombre) = ?',
+      whereArgs: ['jugos salidos'],
+      limit: 1,
+    );
+    if (antiguoSalidos.isNotEmpty) {
+      final despachadosExiste = await db.query(
+        'productos',
+        where: 'LOWER(nombre) = ?',
+        whereArgs: ['jugos despachados'],
+        limit: 1,
+      );
+      if (despachadosExiste.isEmpty) {
+        final sumaDejados = await db.rawQuery(
+          "SELECT COALESCE(SUM(cantidad_botellas), 0) AS total FROM entregas WHERE tipo = 'dejado'",
+        );
+        final totalDejados = (sumaDejados.first['total'] as num?)?.toInt() ?? 0;
+        await db.update(
+          'productos',
+          {
+            'nombre': 'Jugos despachados',
+            'cantidad': totalDejados,
+          },
+          where: 'id = ?',
+          whereArgs: [antiguoSalidos.first['id']],
+        );
+      } else {
+        await db.delete(
+          'productos',
+          where: 'id = ?',
+          whereArgs: [antiguoSalidos.first['id']],
         );
       }
     }
@@ -247,10 +284,8 @@ class DatabaseHelper {
 
       // Si aumentan los Jugos preparados (+delta):
       // - Se restan de Botellas disponibles (-delta)
-      // - Se acumulan permanentemente en Jugos salidos (+delta)
       if (nombreLower == 'jugos' && delta > 0) {
         await _ajustarPorNombreEnTxn(txn, 'botellas', -delta);
-        await _ajustarPorNombreEnTxn(txn, 'jugos salidos', delta);
       }
       // Si se cargan nuevas Devoluciones (+delta):
       // - Se suman a Botellas disponibles para reutilizar (+delta)
@@ -296,7 +331,6 @@ class DatabaseHelper {
   /// Hacer Jugos (Noche/Mañana):
   /// - Resta `cantidad` de Botellas disponibles
   /// - Suma `cantidad` a Jugos del día
-  /// - Suma `cantidad` al contador permanente Jugos salidos (nunca se reinicia)
   Future<void> producirJugos(int cantidad) async {
     if (cantidad <= 0) return;
     final db = await instance.database;
@@ -304,7 +338,6 @@ class DatabaseHelper {
       await _asegurarItemsCicloBotellas(txn);
       await _ajustarPorNombreEnTxn(txn, 'botellas', -cantidad);
       await _ajustarPorNombreEnTxn(txn, 'jugos', cantidad);
-      await _ajustarPorNombreEnTxn(txn, 'jugos salidos', cantidad);
     });
   }
 
@@ -336,11 +369,16 @@ class DatabaseHelper {
     });
   }
 
-  /// Poner en 0 únicamente los contadores diarios permitidos ('jugos' o 'devoluciones')
-  /// sin afectar Botellas, Botellas vendidas ni Jugos salidos.
+  /// Poner en 0 un contador permitido ('jugos', 'devoluciones', 'jugos despachados' o 'jugos vendidos')
+  /// sin afectar el stock de Botellas.
   Future<void> ponerProductoEnCeroPorNombre(String nombre) async {
     final lower = nombre.trim().toLowerCase();
-    if (lower != 'jugos' && lower != 'devoluciones') return;
+    if (lower != 'jugos' &&
+        lower != 'devoluciones' &&
+        lower != 'jugos despachados' &&
+        lower != 'jugos vendidos') {
+      return;
+    }
     final db = await instance.database;
     await db.update(
       'productos',
@@ -422,17 +460,32 @@ class DatabaseHelper {
     final db = await instance.database;
     return await db.transaction((txn) async {
       await _asegurarItemsCicloBotellas(txn);
-      final ventasCliente = await txn.rawQuery(
-        "SELECT COALESCE(SUM(cantidad_botellas), 0) AS total FROM entregas WHERE cliente_id = ? AND tipo = 'vendido'",
+      final totalesCliente = await txn.rawQuery(
+        '''
+        SELECT
+          COALESCE(SUM(CASE WHEN tipo = 'vendido' THEN cantidad_botellas ELSE 0 END), 0) AS total_vendidos,
+          COALESCE(SUM(CASE WHEN tipo = 'dejado' THEN cantidad_botellas ELSE 0 END), 0) AS total_dejados
+        FROM entregas
+        WHERE cliente_id = ?
+        ''',
         [id],
       );
       final totalVendidosCliente =
-          (ventasCliente.first['total'] as num?)?.toInt() ?? 0;
+          (totalesCliente.first['total_vendidos'] as num?)?.toInt() ?? 0;
+      final totalDejadosCliente =
+          (totalesCliente.first['total_dejados'] as num?)?.toInt() ?? 0;
       if (totalVendidosCliente > 0) {
         await _ajustarPorNombreEnTxn(
           txn,
           'jugos vendidos',
           -totalVendidosCliente,
+        );
+      }
+      if (totalDejadosCliente > 0) {
+        await _ajustarPorNombreEnTxn(
+          txn,
+          'jugos despachados',
+          -totalDejadosCliente,
         );
       }
 
@@ -454,8 +507,8 @@ class DatabaseHelper {
   // ==========================================
 
   // Registrar una entrega de botellas a un cliente (dejado o vendido):
-  // - Al dejar jugos ya NO se resta de Jugos ni de Botellas en el inventario.
-  // - Al registrar jugos vendidos a un cliente, se suman automáticamente a "Jugos vendidos" en el inventario.
+  // - Si es "dejado", se suma automáticamente a "Jugos despachados" en el inventario.
+  // - Si es "vendido", se suma automáticamente a "Jugos vendidos" en el inventario.
   Future<int> insertEntrega(
     Entrega entrega, {
     bool descontarDeInventario = false,
@@ -464,18 +517,26 @@ class DatabaseHelper {
     return await db.transaction((txn) async {
       await _asegurarItemsCicloBotellas(txn);
       final id = await txn.insert('entregas', entrega.toMap());
-      if (entrega.tipo == TipoEntrega.vendido && entrega.cantidadBotellas > 0) {
-        await _ajustarPorNombreEnTxn(
-          txn,
-          'jugos vendidos',
-          entrega.cantidadBotellas,
-        );
+      if (entrega.cantidadBotellas > 0) {
+        if (entrega.tipo == TipoEntrega.vendido) {
+          await _ajustarPorNombreEnTxn(
+            txn,
+            'jugos vendidos',
+            entrega.cantidadBotellas,
+          );
+        } else if (entrega.tipo == TipoEntrega.dejado) {
+          await _ajustarPorNombreEnTxn(
+            txn,
+            'jugos despachados',
+            entrega.cantidadBotellas,
+          );
+        }
       }
       return id;
     });
   }
 
-  // Actualizar una entrega existente y ajustar "Jugos vendidos" si es una venta
+  // Actualizar una entrega existente y ajustar "Jugos vendidos" o "Jugos despachados"
   Future<int> updateEntrega(Entrega entrega) async {
     final db = await instance.database;
     return await db.transaction((txn) async {
@@ -493,14 +554,27 @@ class DatabaseHelper {
               (prevRows.first['cantidad_botellas'] as num).toInt();
           final prevTipo =
               TipoEntrega.fromDb(prevRows.first['tipo'] as String?);
-          final prevVendidos =
-              prevTipo == TipoEntrega.vendido ? prevCant : 0;
+
+          final prevVendidos = prevTipo == TipoEntrega.vendido ? prevCant : 0;
           final nuevoVendidos = entrega.tipo == TipoEntrega.vendido
               ? entrega.cantidadBotellas
               : 0;
-          final delta = nuevoVendidos - prevVendidos;
-          if (delta != 0) {
-            await _ajustarPorNombreEnTxn(txn, 'jugos vendidos', delta);
+          final deltaVendidos = nuevoVendidos - prevVendidos;
+          if (deltaVendidos != 0) {
+            await _ajustarPorNombreEnTxn(txn, 'jugos vendidos', deltaVendidos);
+          }
+
+          final prevDejados = prevTipo == TipoEntrega.dejado ? prevCant : 0;
+          final nuevoDejados = entrega.tipo == TipoEntrega.dejado
+              ? entrega.cantidadBotellas
+              : 0;
+          final deltaDejados = nuevoDejados - prevDejados;
+          if (deltaDejados != 0) {
+            await _ajustarPorNombreEnTxn(
+              txn,
+              'jugos despachados',
+              deltaDejados,
+            );
           }
         }
       }
@@ -514,7 +588,7 @@ class DatabaseHelper {
     });
   }
 
-  // Eliminar una entrega y descontar de "Jugos vendidos" si era una venta
+  // Eliminar una entrega y descontar de "Jugos vendidos" o "Jugos despachados"
   Future<int> deleteEntrega(int id) async {
     final db = await instance.database;
     return await db.transaction((txn) async {
@@ -529,8 +603,12 @@ class DatabaseHelper {
       if (prevRows.isNotEmpty) {
         final prevCant = (prevRows.first['cantidad_botellas'] as num).toInt();
         final prevTipo = TipoEntrega.fromDb(prevRows.first['tipo'] as String?);
-        if (prevTipo == TipoEntrega.vendido && prevCant > 0) {
-          await _ajustarPorNombreEnTxn(txn, 'jugos vendidos', -prevCant);
+        if (prevCant > 0) {
+          if (prevTipo == TipoEntrega.vendido) {
+            await _ajustarPorNombreEnTxn(txn, 'jugos vendidos', -prevCant);
+          } else if (prevTipo == TipoEntrega.dejado) {
+            await _ajustarPorNombreEnTxn(txn, 'jugos despachados', -prevCant);
+          }
         }
       }
 
